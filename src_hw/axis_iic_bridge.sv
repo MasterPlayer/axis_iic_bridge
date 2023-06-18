@@ -73,7 +73,6 @@ module axis_iic_bridge #(
     logic                    in_rden            = 1'b0        ;
     logic                    in_empty                         ;
 
-
     logic [N_BYTES-1:0][7:0] out_din_data = '{default:0};
     logic [N_BYTES-1:0]      out_din_keep = '{default:0};
     logic [        7:0]      out_din_user = '{default:0};
@@ -81,7 +80,6 @@ module axis_iic_bridge #(
     logic                    out_wren     = 1'b0        ;
     logic                    out_full                   ;
     logic                    out_awfull                 ;
-
 
     logic d_sda_i;
     logic has_bus_busy = 1'b0;
@@ -254,8 +252,9 @@ module axis_iic_bridge #(
             default : 
                 scl_t <= 1'b1;
         endcase // current_state_
-
     end 
+
+
 
     always_ff @(posedge clk) begin 
         if (has_event)
@@ -268,6 +267,8 @@ module axis_iic_bridge #(
 
             endcase // current_state
     end
+
+    
 
     always_ff @(posedge clk) begin 
         if (has_event) begin 
