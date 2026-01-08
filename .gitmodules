@@ -1,0 +1,3 @@
+[submodule "submodules/mp_xpm_fifo"]
+    path = "submodules/mp_xpm_fifo"
+    url = "https://github.com/MasterPlayer/mp_xpm_fifo.git"
