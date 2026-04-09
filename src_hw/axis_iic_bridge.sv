@@ -488,26 +488,43 @@ module axis_iic_bridge #(
         endcase // current_state
     end 
 
-    fifo_in_sync_user_xpm #(
-        .DATA_WIDTH(DATA_WIDTH),
-        .USER_WIDTH(8         ),
-        .MEMTYPE   ("block"   ),
-        .DEPTH     (DEPTH     )
-    ) fifo_in_sync_user_xpm_inst (
-        .CLK          (clk              ),
-        .RESET        (reset            ),
-        .S_AXIS_TDATA (s_axis_tdata_swap),
-        .S_AXIS_TKEEP (s_axis_tkeep     ),
-        .S_AXIS_TUSER (s_axis_tuser     ),
-        .S_AXIS_TVALID(s_axis_tvalid    ),
-        .S_AXIS_TREADY(s_axis_tready    ),
-        .S_AXIS_TLAST (s_axis_tlast     ),
-        .IN_DOUT_DATA (in_dout_data     ),
-        .IN_DOUT_KEEP (in_dout_keep     ),
-        .IN_DOUT_USER (in_dout_user     ),
-        .IN_DOUT_LAST (in_dout_last     ),
-        .IN_RDEN      (in_rden          ),
-        .IN_EMPTY     (in_empty         )
+
+    mp_xpm_fifo_in_sync #(
+        .MEMTYPE    ("block"   ),
+        .DEPTH      (DEPTH     ),
+        //
+        .TDATA_WIDTH(DATA_WIDTH),
+        .TID_WIDTH  (0         ),
+        .TDEST_WIDTH(0         ),
+        .TUSER_WIDTH(8         ),
+        //
+        .HAS_TSTRB  (1'b0      ),
+        .HAS_TKEEP  (1'b1      ),
+        .HAS_TLAST  (1'b1      )
+    ) mp_xpm_fifo_in_sync_inst (
+        .i_clk          (clk              ),
+        .i_reset        (reset            ),
+        //
+        .i_s_axis_tdata (s_axis_tdata_swap),
+        .i_s_axis_tstrb ('0               ),
+        .i_s_axis_tkeep (s_axis_tkeep     ),
+        .i_s_axis_tid   ('0               ),
+        .i_s_axis_tdest ('0               ),
+        .i_s_axis_tuser (s_axis_tuser     ),
+        .i_s_axis_tlast (s_axis_tlast     ),
+        .i_s_axis_tvalid(s_axis_tvalid    ),
+        .o_s_axis_tready(s_axis_tready    ),
+        //
+        .o_dout_data    (in_dout_data     ),
+        .o_dout_strb    (                 ),
+        .o_dout_keep    (in_dout_keep     ),
+        .o_dout_id      (                 ),
+        .o_dout_dest    (                 ),
+        .o_dout_user    (in_dout_user     ),
+        .o_dout_last    (in_dout_last     ),
+        .i_rden         (in_rden          ),
+        .o_empty        (in_empty         )
+        //
     );
 
     always_ff @(posedge clk) begin 
@@ -638,31 +655,42 @@ module axis_iic_bridge #(
             has_nack_required <= 1'b0; 
     end 
 
-    fifo_out_sync_tuser_xpm #(
-        .DATA_WIDTH(DATA_WIDTH),
-        .USER_WIDTH(8         ),
-        .MEMTYPE   ("block"   ),
-        .DEPTH     (DEPTH     )
-    ) fifo_out_sync_tuser_xpm_inst (
-        .CLK          (clk          ),
-        .RESET        (reset        ),
-        
-        .OUT_DIN_DATA (out_din_data ),
-        .OUT_DIN_KEEP (out_din_keep ),
-        .OUT_DIN_USER (out_din_user ),
-        .OUT_DIN_LAST (out_din_last ),
-        .OUT_WREN     (out_wren     ),
-        .OUT_FULL     (out_full     ),
-        .OUT_AWFULL   (out_awfull   ),
-        
-        .M_AXIS_TDATA (m_axis_tdata ),
-        .M_AXIS_TKEEP (m_axis_tkeep ),
-        .M_AXIS_TUSER (m_axis_tuser ),
-        .M_AXIS_TVALID(m_axis_tvalid),
-        .M_AXIS_TLAST (m_axis_tlast ),
-        .M_AXIS_TREADY(m_axis_tready)
-    );
 
+    mp_xpm_fifo_out_sync #(
+        .MEMTYPE    ("block"   ),
+        .DEPTH      (DEPTH     ),
+        //
+        .TDATA_WIDTH(DATA_WIDTH),
+        .TID_WIDTH  (0         ),
+        .TDEST_WIDTH(0         ),
+        .TUSER_WIDTH(8         ),
+        //
+        .HAS_TSTRB  (1'b0      ),
+        .HAS_TKEEP  (1'b1      ),
+        .HAS_TLAST  (1'b1      )) 
+    mp_xpm_fifo_out_sync_inst (
+        .i_clk          (clk          ),
+        .i_reset        (reset        ),
+        .i_din_data     (out_din_data ),
+        .i_din_strb     ('0           ),
+        .i_din_keep     (out_din_keep ),
+        .i_din_id       ('0           ),
+        .i_din_dest     ('0           ),
+        .i_din_user     (out_din_user ),
+        .i_din_last     (out_din_last ),
+        .i_wren         (out_wren     ),
+        .o_full         (out_full     ),
+        .o_awfull       (out_awfull   ),
+        //
+        .o_m_axis_tdata (m_axis_tdata ),
+        .o_m_axis_tstrb (             ),
+        .o_m_axis_tkeep (m_axis_tkeep ),
+        .o_m_axis_tid   (             ),
+        .o_m_axis_tdest (             ),
+        .o_m_axis_tuser (m_axis_tuser ),
+        .o_m_axis_tlast (m_axis_tlast ),
+        .o_m_axis_tvalid(m_axis_tvalid),
+        .i_m_axis_tready(m_axis_tready));
 
     /* 
      * 

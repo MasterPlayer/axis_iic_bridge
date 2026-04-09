@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 
 
 
@@ -19,6 +19,10 @@ module tb_slave_device_model (
     #100 
         reset = 1'b0;
     end 
+
+    initial begin
+        $timeformat(-9, 3, " ns", 10);
+    end
 
     logic [0:255][0:7] register_file = '{
         8'h00, 8'h01, 8'h02, 8'h03, 8'h04, 8'h05, 8'h06, 8'h07, 8'h08, 8'h09, 8'h0A, 8'h0B, 8'h0C, 8'h0D, 8'h0E, 8'h0F,
@@ -224,6 +228,7 @@ module tb_slave_device_model (
         if (valid_event) begin 
             if (register_counter == 0) begin 
                 write_operation <= ~shift_register[0];
+                // $display("%t : [SLAVE_DEVICE_MODEL] : WRITE operation for address : 0x%02x", $realtime, shift_register);
             end else begin 
                 write_operation <= write_operation;
             end 
@@ -238,6 +243,7 @@ module tb_slave_device_model (
         if (valid_event) begin 
             if (register_counter == 0) begin 
                 read_operation <= shift_register[0];
+                // $display("%t : [SLAVE_DEVICE_MODEL] : READ operation for address : 0x%02x", $realtime, shift_register);
             end else begin 
                 read_operation <= read_operation;
             end 
@@ -310,6 +316,7 @@ module tb_slave_device_model (
                 if (register_counter > 1) begin 
                     if (valid_event) begin 
                         register_file[ptr] <= shift_register;
+                        $display("%t : [SLAVE_DEVICE_MODEL] : device 0x%02x write_data to 0x%02x : 0x%02x ", $realtime, device_address, ptr, shift_register);
                     end else begin 
                         register_file[ptr] <= register_file[ptr];
                     end  
