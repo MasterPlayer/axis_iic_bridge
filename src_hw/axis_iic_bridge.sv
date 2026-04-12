@@ -49,7 +49,8 @@ module axis_iic_bridge #(
     logic [                 2:0] bit_cnt              = '{default:0};
     logic                        has_ack              = 1'b0        ;
 
-    logic d_i_scl_i     = 1'b1;
+    logic scl_i_registered     = 1'b1;
+    logic d_scl_i_registered   = 1'b1;
     logic scl_i_event = 1'b0;
 
     logic [                7:0] i2c_address       = '{default:0};
@@ -84,8 +85,9 @@ module axis_iic_bridge #(
     logic                    out_full                   ;
     logic                    out_awfull                 ;
 
-    logic d_i_sda_i;
-    logic has_bus_busy = 1'b0;
+    logic sda_i_registered         ;
+    logic d_sda_i_registered       ;
+    logic has_bus_busy       = 1'b0;
 
     typedef enum {
         IDLE_ST,
@@ -483,7 +485,7 @@ module axis_iic_bridge #(
         case (current_state)
             WAIT_ACK_ST : 
                 if (clk_assert) begin 
-                    if (!d_i_sda_i) begin 
+                    if (!sda_i_registered) begin 
                         has_ack <= 1'b1;
                     end else begin   
                         has_ack <= 1'b0;
@@ -492,7 +494,7 @@ module axis_iic_bridge #(
 
             WAIT_WRITE_ACK_ST : 
                 if (clk_assert) begin 
-                    if (!d_i_sda_i) begin 
+                    if (!sda_i_registered) begin 
                         has_ack <= 1'b1;
                     end else begin   
                         has_ack <= 1'b0;
@@ -766,7 +768,7 @@ module axis_iic_bridge #(
         case (current_state) 
             READ_ST : 
                 if (scl_i_event)
-                    out_din_data[word_byte_counter] <= {out_din_data[word_byte_counter][6:0], d_i_sda_i};
+                    out_din_data[word_byte_counter] <= {out_din_data[word_byte_counter][6:0], sda_i_registered};
 
             default : 
                 out_din_data <= out_din_data;
@@ -811,31 +813,27 @@ module axis_iic_bridge #(
     end 
 
     /*FF for create event when i2c clk changed*/
-    always_ff @(posedge i_clk) begin : d_i_scl_i_processing 
-        d_i_scl_i <= i_scl_i;
+    always_ff @(posedge i_clk) begin : scl_i_registered_processing 
+        scl_i_registered <= i_scl_i;
     end 
 
-    logic dd_i_scl_i;
-
     always_ff @(posedge i_clk) begin : dd_i_clk_i_processing 
-        dd_i_scl_i <= d_i_scl_i;
+        d_scl_i_registered <= scl_i_registered;
     end 
 
 
     always_ff @(posedge i_clk) begin 
-        scl_i_event <= d_i_scl_i & ~dd_i_scl_i;
+        scl_i_event <= scl_i_registered & ~d_scl_i_registered;
     end
 
 
     /*ff for determine event when input data change state*/
-    always_ff @(posedge i_clk) begin : d_i_sda_i_proc
-        d_i_sda_i <= i_sda_i;
+    always_ff @(posedge i_clk) begin : sda_i_registered_proc
+        sda_i_registered <= i_sda_i;
     end
 
-    logic dd_i_sda_i;
-
     always_ff @(posedge i_clk) begin 
-        dd_i_sda_i <= d_i_sda_i;
+        d_sda_i_registered <= sda_i_registered;
     end 
 
     /* 
@@ -846,11 +844,11 @@ module axis_iic_bridge #(
     always_ff @(posedge i_clk) begin : has_bus_busy_proc
         case (current_state)
             IDLE_ST : 
-                if (dd_i_sda_i & !d_i_sda_i & d_i_scl_i)
+                if (d_sda_i_registered & !sda_i_registered & d_i_scl_i)
                     has_bus_busy <= 1'b1;
 
             AWAIT_OTHER_MASTER_ST : 
-                if  (d_i_sda_i & !dd_i_sda_i & d_i_scl_i)
+                if  (sda_i_registered & !d_sda_i_registered & d_i_scl_i)
                     has_bus_busy <= 1'b0;
 
             default : 
