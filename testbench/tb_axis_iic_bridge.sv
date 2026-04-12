@@ -72,6 +72,7 @@ module tb_axis_iic_bridge ();
 
               260000 : begin s_axis_tdata <= 8'h08; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
 
+              300000 : begin s_axis_tdata <= 8'h01; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
             
             default: begin s_axis_tdata <= s_axis_tdata; s_axis_tuser <= s_axis_tuser; s_axis_tkeep <= s_axis_tkeep; s_axis_tvalid <= 1'b0; s_axis_tlast <= s_axis_tlast; end 
 

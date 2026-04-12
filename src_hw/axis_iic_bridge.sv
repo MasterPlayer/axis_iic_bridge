@@ -109,9 +109,7 @@ module axis_iic_bridge #(
         // low = (((n_bytes-1)-index)*8);
         // high_ = ((index+1)*8)-1;
         // low_ = (index*8);
-        always_comb begin
-            s_axis_tdata_swap[((N_BYTES-index)*8)-1:(((N_BYTES-1)-index)*8)] = i_s_axis_tdata[(((index+1)*8)-1):(index*8)];
-        end
+        always_comb s_axis_tdata_swap[((N_BYTES-index)*8)-1:(((N_BYTES-1)-index)*8)] = i_s_axis_tdata[(((index+1)*8)-1):(index*8)];
 
     end 
 
@@ -485,7 +483,7 @@ module axis_iic_bridge #(
         case (current_state)
             WAIT_ACK_ST : 
                 if (clk_assert) begin 
-                    if (!i_sda_i) begin 
+                    if (!d_i_sda_i) begin 
                         has_ack <= 1'b1;
                     end else begin   
                         has_ack <= 1'b0;
@@ -494,7 +492,7 @@ module axis_iic_bridge #(
 
             WAIT_WRITE_ACK_ST : 
                 if (clk_assert) begin 
-                    if (!i_sda_i) begin 
+                    if (!d_i_sda_i) begin 
                         has_ack <= 1'b1;
                     end else begin   
                         has_ack <= 1'b0;
@@ -768,7 +766,7 @@ module axis_iic_bridge #(
         case (current_state) 
             READ_ST : 
                 if (scl_i_event)
-                    out_din_data[word_byte_counter] <= {out_din_data[word_byte_counter][6:0], i_sda_i};
+                    out_din_data[word_byte_counter] <= {out_din_data[word_byte_counter][6:0], d_i_sda_i};
 
             default : 
                 out_din_data <= out_din_data;
@@ -817,18 +815,28 @@ module axis_iic_bridge #(
         d_i_scl_i <= i_scl_i;
     end 
 
-    always_comb begin 
-        if (i_scl_i & ~d_i_scl_i)
-            scl_i_event = 1'b1;
-        else 
-            scl_i_event = 1'b0;
+    logic dd_i_scl_i;
+
+    always_ff @(posedge i_clk) begin : dd_i_clk_i_processing 
+        dd_i_scl_i <= d_i_scl_i;
     end 
+
+
+    always_ff @(posedge i_clk) begin 
+        scl_i_event <= d_i_scl_i & ~dd_i_scl_i;
+    end
 
 
     /*ff for determine event when input data change state*/
     always_ff @(posedge i_clk) begin : d_i_sda_i_proc
         d_i_sda_i <= i_sda_i;
     end
+
+    logic dd_i_sda_i;
+
+    always_ff @(posedge i_clk) begin 
+        dd_i_sda_i <= d_i_sda_i;
+    end 
 
     /* 
      * Signal for ability determine multimaster mode
@@ -838,11 +846,11 @@ module axis_iic_bridge #(
     always_ff @(posedge i_clk) begin : has_bus_busy_proc
         case (current_state)
             IDLE_ST : 
-                if (d_i_sda_i & !i_sda_i & i_scl_i)
+                if (dd_i_sda_i & !d_i_sda_i & d_i_scl_i)
                     has_bus_busy <= 1'b1;
 
             AWAIT_OTHER_MASTER_ST : 
-                if  (i_sda_i & !d_i_sda_i & i_scl_i)
+                if  (d_i_sda_i & !dd_i_sda_i & d_i_scl_i)
                     has_bus_busy <= 1'b0;
 
             default : 
