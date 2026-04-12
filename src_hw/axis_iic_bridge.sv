@@ -844,11 +844,11 @@ module axis_iic_bridge #(
     always_ff @(posedge i_clk) begin : has_bus_busy_proc
         case (current_state)
             IDLE_ST : 
-                if (d_sda_i_registered & !sda_i_registered & d_i_scl_i)
+                if (d_sda_i_registered & !sda_i_registered & scl_i_registered)
                     has_bus_busy <= 1'b1;
 
             AWAIT_OTHER_MASTER_ST : 
-                if  (sda_i_registered & !d_sda_i_registered & d_i_scl_i)
+                if  (sda_i_registered & !d_sda_i_registered & scl_i_registered)
                     has_bus_busy <= 1'b0;
 
             default : 
