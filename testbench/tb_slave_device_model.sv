@@ -3,28 +3,20 @@
 
 
 module tb_slave_device_model (
-    input  logic IIC_SCL_I,
-    input  logic IIC_SDA_I,
-    output logic IIC_SCL_O,
-    output logic IIC_SDA_O 
+    input  logic i_clk    ,
+    input  logic i_reset  ,
+    input  logic iic_scl_i,
+    input  logic iic_sda_i,
+    output logic iic_scl_o,
+    output logic iic_sda_o
 );
 
-    logic clk   = 1'b0;
-    logic reset = 1'b1;
-
-    always #5 clk = ~clk; 
-
-    initial begin 
-        reset = 1'b1;
-    #100 
-        reset = 1'b0;
-    end 
 
     initial begin
         $timeformat(-9, 3, " ns", 10);
     end
 
-    logic [0:255][0:7] register_file = '{
+    logic [0:255][7:0] register_file = '{
         8'h00, 8'h01, 8'h02, 8'h03, 8'h04, 8'h05, 8'h06, 8'h07, 8'h08, 8'h09, 8'h0A, 8'h0B, 8'h0C, 8'h0D, 8'h0E, 8'h0F,
         8'h10, 8'h11, 8'h12, 8'h13, 8'h14, 8'h15, 8'h16, 8'h17, 8'h18, 8'h19, 8'h1A, 8'h1B, 8'h1C, 8'h1D, 8'h1E, 8'h1F,
         8'h20, 8'h21, 8'h22, 8'h23, 8'h24, 8'h25, 8'h26, 8'h27, 8'h28, 8'h29, 8'h2A, 8'h2B, 8'h2C, 8'h2D, 8'h2E, 8'h2F,
@@ -43,302 +35,370 @@ module tb_slave_device_model (
         8'hF0, 8'hF1, 8'hF2, 8'hF3, 8'hF4, 8'hF5, 8'hF6, 8'hF7, 8'hF8, 8'hF9, 8'hFA, 8'hFB, 8'hFC, 8'hFD, 8'hFE, 8'hFF 
     };
 
-    logic d_iic_scl = 1'b1;
-    logic scl       = 1'b0;
+    logic d_iic_sda_i;
+    logic d_iic_scl_i;
 
-    logic write_operation = 1'b0;
-    logic read_operation  = 1'b0;
+    logic sda_i_event;
+    logic scl_i_event;
+
+    logic has_start;
+    logic has_stop;
+
+    integer duration_div4 = 0;
+    integer duration_div2 = 0;
+    integer duration      = 0;
+
+    logic scl_assert   = 1'b0;
+    logic scl_deassert = 1'b0;
 
     typedef enum {
-        AWAIT_CMD,
-        READ_OP ,
-        READ_ACK,
-        WRITE_OP 
+        WAIT_START_EVENT_ST,
+        CALCULATION_ST,
+        WAIT_STOP_EVENT_ST
+    } duration_fsm;
+
+    duration_fsm duration_fsm_state = WAIT_START_EVENT_ST; 
+
+
+    integer duration_cnt         = '{default:0};
+    integer duration_cnt_shifted = '{default:0};
+
+
+    logic duration_cnt_event = 1'b0;
+
+    typedef enum {
+        WAIT_START_ST, 
+        RX_ADDR_ST,
+        TX_ACK_ST,
+        RX_DATA_ST,
+        TX_DATA_ST
     } fsm;
 
-    fsm current_state = AWAIT_CMD;
 
-    logic [7:0] shift_register        = '{default : 0};
-    logic [3:0] bit_counter           = '{default:0}  ;
-    logic       valid                 = 1'b0          ;
-    logic       d_sda                                 ;
-    logic       finalize_transmission = 1'b0          ;
+    fsm current_state = WAIT_START_ST;
 
-    logic [7:0] device_address   = '{default:0};
-    logic [7:0] ptr              = '{default:0};
-    logic [7:0] data_for_writing = '{default:0};
 
-    logic [7:0] register_counter = '{default:0};
+    logic   [7:0] iic_address                ;
+    logic   [2:0] bit_cnt      = '{default:0};
+    logic   [7:0] ptr                        ;
+    integer       word_counter = 0           ;
 
-    always_ff @(posedge clk) begin : d_iic_scl_processing 
-        d_iic_scl <= IIC_SCL_I;
+
+    always_ff @(posedge i_clk) begin 
+        d_iic_sda_i <= iic_sda_i;
     end 
 
-    always_comb begin 
-        scl = IIC_SCL_I & !d_iic_scl;
+    always_ff @(posedge i_clk) begin 
+        d_iic_scl_i <= iic_scl_i;
     end 
 
-    always_ff @(posedge clk) begin 
-        if (scl) begin 
-            shift_register <= {shift_register[6:0], IIC_SDA_I};
+    always_comb sda_i_event = iic_sda_i ^ d_iic_sda_i;
+    always_comb scl_i_event = iic_scl_i ^ d_iic_scl_i;
+
+    always_comb scl_assert   = scl_i_event & iic_scl_i;
+    always_comb scl_deassert = scl_i_event & ~iic_scl_i;
+
+    always_comb has_start   = sda_i_event & !iic_sda_i & iic_scl_i;
+    always_comb has_stop    = sda_i_event & iic_sda_i & iic_scl_i;
+
+    always_ff @(posedge i_clk) begin : duration_fsm_state_processing 
+        if (i_reset) begin 
+            duration_fsm_state <= WAIT_START_EVENT_ST;
         end else begin 
-            shift_register <= shift_register;
-        end 
-    end  
-
-
-    always_ff @(posedge clk) begin 
-        if (reset | finalize_transmission) begin 
-            bit_counter <= '{default:0};
-        end else begin 
-            if (scl) begin 
-                if (bit_counter == 8) begin 
-                    bit_counter <= '{default:0};
-                end else begin 
-                    bit_counter <= bit_counter + 1;
-                end 
-            end else begin 
-                bit_counter <= bit_counter;
-            end 
-        end 
-    end 
-
-
-    always_comb begin 
-        valid = bit_counter[3];
-    end 
-
-    logic d_valid = 1'b0;
-
-    always_ff @(posedge clk) begin 
-        d_valid <= valid;
-    end 
-
-    logic valid_event = 1'b0;
-
-    always_ff @(posedge clk) begin 
-        valid_event <= !d_valid & valid;
-    end 
-
-
-    always_ff @(posedge clk) begin 
-        d_sda <= IIC_SDA_I;
-    end 
-
-
-    always_ff @(posedge clk) begin 
-        if (IIC_SCL_I) begin 
-            if (d_sda != IIC_SDA_I) begin 
-                finalize_transmission <= 1'b1;
-            end else begin 
-                finalize_transmission <= 1'b0;
-            end 
-        end else begin 
-            finalize_transmission <= 1'b0;
-        end 
-    end 
-
-
-    always_ff @(posedge clk) begin 
-        if (reset | finalize_transmission) begin 
-            register_counter <= '{default:0};
-        end else begin 
-            if (valid_event) begin 
-                register_counter <= register_counter + 1;
-            end else begin 
-                register_counter <= register_counter;
-            end 
-        end 
-    end 
-
-
-
-    always_ff @(posedge clk) begin 
-        if (valid_event) begin 
-            if (register_counter == 0) begin 
-                device_address <= shift_register;
-            end else begin 
-                device_address <= device_address;
-            end 
-        end else begin 
-            device_address <= device_address;
-        end 
-    end     
-
-
-
-    always_ff @(posedge clk) begin 
-        if (valid_event) begin 
-            if (write_operation) begin 
-                if (register_counter == 1) begin 
-                    ptr <= shift_register;
-                end else begin 
-                    case (current_state) 
-                        WRITE_OP : 
-                            if (valid_event) begin 
-                                ptr <= ptr + 1;
-                            end else begin 
-                                ptr <= ptr;
-                            end 
-
-                        default : 
-                            ptr <= ptr;
-
-                    endcase
-                end 
-            end else begin 
-                case (current_state) 
-                    READ_OP : 
-                        if (valid_event) begin 
-                            ptr <= ptr + 1;
-                        end else begin 
-                            ptr <= ptr;
-                        end 
-
-                    default : 
-                        ptr <= ptr;
-                endcase // current_state
-            end 
-        end else begin             
-            ptr <= ptr;
-        end 
-    end 
-
-
-
-    always_ff @(posedge clk) begin : data_for_writing_processing 
-        if (valid_event) begin 
-            if (write_operation) begin 
-                if (register_counter == 2) begin 
-                    data_for_writing <= shift_register;
-                end else begin 
-                    data_for_writing <= data_for_writing;
-                end 
-            end else begin 
-                data_for_writing <= data_for_writing;
-            end 
-        end else begin 
-            data_for_writing <= data_for_writing;
-        end 
-    end 
-
-
-
-    always_ff @(posedge clk) begin 
-        if (valid_event) begin 
-            if (register_counter == 0) begin 
-                write_operation <= ~shift_register[0];
-                // $display("%t : [SLAVE_DEVICE_MODEL] : WRITE operation for address : 0x%02x", $realtime, shift_register);
-            end else begin 
-                write_operation <= write_operation;
-            end 
-        end else begin 
-            write_operation <= write_operation;
-        end 
-    end 
-
-
-
-    always_ff @(posedge clk) begin 
-        if (valid_event) begin 
-            if (register_counter == 0) begin 
-                read_operation <= shift_register[0];
-                // $display("%t : [SLAVE_DEVICE_MODEL] : READ operation for address : 0x%02x", $realtime, shift_register);
-            end else begin 
-                read_operation <= read_operation;
-            end 
-        end else begin 
-            read_operation <= read_operation;
-        end 
-    end 
-
-
-
-    always_ff @(posedge clk) begin 
-        if (reset | finalize_transmission) begin 
-            current_state <= AWAIT_CMD;
-        end else begin 
-
-            case (current_state)
-                AWAIT_CMD : 
-                    if (read_operation & register_counter == 1) begin 
-                        current_state <= READ_ACK;
+            case (duration_fsm_state)
+                WAIT_START_EVENT_ST: 
+                    if (has_start) begin 
+                        duration_fsm_state <= CALCULATION_ST;
                     end else begin 
-                        if (write_operation & register_counter == 1) begin 
-                            current_state <= WRITE_OP;
-                        end else begin 
-                            current_state <= current_state;
-                        end 
+                        duration_fsm_state <= duration_fsm_state;
                     end 
 
-                READ_ACK : 
-                    if (scl & (bit_counter == 0)) begin 
-                        current_state <= READ_OP;
-                    end else begin  
-                        current_state <= current_state;
+                CALCULATION_ST: 
+                    if (scl_i_event) begin 
+                        duration_fsm_state <= WAIT_STOP_EVENT_ST;
+                    end else begin 
+                        duration_fsm_state <= duration_fsm_state;
                     end 
 
-                READ_OP : 
-                    current_state <= current_state;
-
-                WRITE_OP : 
-                    current_state <= current_state;
+                WAIT_STOP_EVENT_ST : 
+                    if (has_stop) begin 
+                        duration_fsm_state <= WAIT_START_EVENT_ST;
+                    end else begin 
+                        duration_fsm_state <= duration_fsm_state;
+                    end 
 
                 default : 
-                    current_state <= current_state;
+                    duration_fsm_state <= duration_fsm_state;
             endcase // current_state
-
         end 
+    end 
+    
+
+    always_ff @(posedge i_clk) begin : duration_div4_processing 
+        case (duration_fsm_state)
+
+            WAIT_START_EVENT_ST: 
+                duration_div4 <= 0;
+
+            CALCULATION_ST :
+                if (scl_i_event) begin 
+                    duration_div4 <= duration_div4;
+                end else begin 
+                    duration_div4 <= duration_div4 + 1;
+                end 
+
+            default: 
+                duration_div4 <= duration_div4;
+
+        endcase // duration_fsm_state
     end 
 
 
+    always_comb duration_div2 = duration_div4 << 1;
+    always_comb duration      = duration_div4 << 2;
 
-    always_comb begin 
-        case (current_state) 
-            READ_OP : 
-                if (bit_counter != 0) begin 
-                    IIC_SDA_O = register_file[ptr][(bit_counter-1)];
+
+    always_ff @(posedge i_clk) begin : duration_cnt_processing 
+        case (duration_fsm_state)
+            WAIT_START_EVENT_ST: 
+                if (has_start) begin 
+                    duration_cnt <= duration_cnt + 1;
                 end else begin 
-                    IIC_SDA_O = 1'b0;
+                    duration_cnt <= '{default:0};
                 end 
 
             default : 
-                IIC_SDA_O = 1'b0;
+                if (duration_cnt < duration) begin 
+                    duration_cnt <= duration_cnt + 1;
+                end else begin 
+                    duration_cnt <= '{default:0};
+                end 
+
+        endcase // duration_fsm_state
+    end 
+
+
+    always_ff @(posedge i_clk) begin : duration_cnt_event_processing 
+        case (duration_fsm_state)
+            WAIT_START_EVENT_ST : 
+                duration_cnt_event <= 1'b0;
+
+            default : 
+                if (duration_cnt < duration) begin 
+                    duration_cnt_event <= 1'b0;
+                end else begin 
+                    duration_cnt_event <= 1'b1;
+                end 
+
+        endcase // duration_fsm_state
+    end 
+
+
+    always_ff @(posedge i_clk) begin : duration_cnt_shifted_processing 
+        case (duration_fsm_state)
+            WAIT_STOP_EVENT_ST: 
+                if (duration_cnt_shifted < duration) begin 
+                    duration_cnt_shifted <= duration_cnt_shifted + 1;
+                end else begin 
+                    duration_cnt_shifted <= '{default:0};
+                end 
+
+            default : 
+                duration_cnt_shifted <= duration_cnt_shifted;
+
+        endcase // duration_fsm_state
+    end 
+
+
+    always_ff @(posedge i_clk) begin : current_state_processing 
+        if (has_stop) begin 
+            current_state <= WAIT_START_ST;
+        end else begin 
+
+            case (current_state)
+
+                WAIT_START_ST : 
+                    if (has_start) begin 
+                        current_state <= RX_ADDR_ST;
+                    end else begin 
+                        current_state <= current_state;
+                    end 
+
+                RX_ADDR_ST : 
+                    if (scl_assert) begin 
+                        if (bit_cnt == 0) begin 
+                            current_state <= TX_ACK_ST;
+                        end else begin
+                            current_state <= current_state;
+                        end 
+                    end else begin 
+                        current_state <= current_state;
+                    end 
+
+                TX_ACK_ST :     
+                    if (scl_assert) begin 
+                        if (!iic_address[0]) begin 
+                            current_state <= RX_DATA_ST;
+                        end else begin 
+                            current_state <= TX_DATA_ST;
+                        end 
+                    end else begin 
+                        current_state <= current_state;
+                    end 
+
+                RX_DATA_ST : 
+                    if (scl_assert) begin 
+                        if (bit_cnt == 0) begin 
+                            current_state <= TX_ACK_ST;
+                        end else begin 
+                            current_state <= current_state;
+                        end 
+                    end else begin 
+                        current_state <= current_state;
+                    end 
+
+                TX_DATA_ST : 
+                    if (scl_assert) begin 
+                        if (bit_cnt == 0) begin 
+                            current_state <= TX_ACK_ST;
+                        end else begin 
+                            current_state <= current_state;
+                        end 
+                    end else begin 
+                        current_state <= current_state;
+                    end 
+
+                default : 
+                    current_state <= current_state;
+
+            endcase // current_state
+        end 
+    end 
+
+
+    always_ff @(posedge i_clk) begin : iic_address_processing 
+        case (current_state)
+            RX_ADDR_ST: 
+                if (scl_assert) begin 
+                    iic_address <= {iic_address[6:0], iic_sda_i};
+                end else begin 
+                    iic_address <= iic_address;
+                end 
+
+            default : 
+                iic_address <= iic_address;
 
         endcase // current_state
     end 
 
 
-
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin : bit_cnt_processing 
         case (current_state)
-            WRITE_OP : 
-                if (register_counter > 1) begin 
-                    if (valid_event) begin 
-                        register_file[ptr] <= shift_register;
-                        $display("%t : [SLAVE_DEVICE_MODEL] : device 0x%02x write_data to 0x%02x : 0x%02x ", $realtime, device_address, ptr, shift_register);
-                    end else begin 
-                        register_file[ptr] <= register_file[ptr];
-                    end  
+            RX_ADDR_ST: 
+                if (scl_assert) begin 
+                    bit_cnt <= bit_cnt - 1;
                 end else begin 
-                    register_file[ptr] <= register_file[ptr];
+                    bit_cnt <= bit_cnt;
                 end 
 
-            READ_OP : 
-                register_file[ptr] <= register_file[ptr];
+            RX_DATA_ST : 
+                if (scl_assert) begin 
+                    bit_cnt <= bit_cnt - 1;
+                end else begin 
+                    bit_cnt <= bit_cnt;
+                end 
+
+            TX_DATA_ST : 
+                if (scl_assert) begin 
+                    bit_cnt <= bit_cnt - 1;
+                end else begin 
+                    bit_cnt <= bit_cnt;
+                end 
 
             default : 
-                register_file[ptr] <= register_file[ptr];
+                bit_cnt <= 7;
 
-        endcase
+        endcase // duration_fsm_state
     end 
 
 
+    always_ff @(posedge i_clk) begin : iic_sda_o_processing 
+        case (current_state) 
+            RX_ADDR_ST : 
+                iic_sda_o <= iic_sda_i;
 
-    always_comb begin 
-        IIC_SCL_O = d_iic_scl;
+            TX_ACK_ST : 
+                if (duration_cnt_event) begin 
+                    iic_sda_o <= 1'b0;
+                end else begin 
+                    iic_sda_o <= iic_sda_o;
+                end 
+
+            RX_DATA_ST : 
+                iic_sda_o <= iic_sda_i;
+
+            TX_DATA_ST : 
+                if (duration_cnt_event) begin 
+                    iic_sda_o <= register_file[ptr][bit_cnt];
+                end else begin 
+                    iic_sda_o <= iic_sda_o;
+                end 
+
+            default : 
+                iic_sda_o <= iic_sda_i;
+
+        endcase // current_state
     end 
 
-    
+
+    always_ff @(posedge i_clk) begin : iic_scl_o_processing 
+        iic_scl_o <= iic_scl_i;
+    end 
+
+
+    always_ff @(posedge i_clk) begin : ptr_processing  
+        case (current_state) 
+            RX_DATA_ST : 
+                if (scl_assert) begin
+                    if (word_counter == 0) begin 
+                        ptr <= {ptr[6:0], iic_sda_i};
+                    end else begin 
+                        ptr <= ptr; 
+                    end  
+                end else begin 
+                    ptr <= ptr;
+                end 
+
+            TX_DATA_ST : 
+                if (scl_assert)
+                    if (bit_cnt == 0) 
+                        ptr <= ptr + 1;
+
+            default : 
+                ptr <= ptr;
+        endcase // duration_fsm_state
+    end 
+
+
+    always_ff @(posedge i_clk) begin : word_counter_processing 
+        case (current_state)
+            RX_DATA_ST : 
+                if (scl_assert)
+                    if (bit_cnt == 0) begin 
+                        word_counter <= word_counter + 1;
+                    end else begin 
+                        word_counter <= word_counter;
+                    end 
+                else 
+                    word_counter <= word_counter;
+
+            WAIT_START_ST: 
+                word_counter <= 0;
+
+            default: 
+                word_counter <= word_counter;
+        endcase // current_state
+    end 
+
 
 endmodule

@@ -2,40 +2,43 @@
 
 
 module axis_iic_bridge #(
-    parameter CLK_PERIOD     = 100000000,
-    parameter CLK_I2C_PERIOD = 25000000 ,
-    parameter N_BYTES        = 32       ,
-    parameter WRITE_CONTROL  = "COUNTER",
-    parameter DEPTH          = 32        
+    parameter          CLK_PERIOD     = 100000000     ,
+    parameter          CLK_I2C_PERIOD = 25000000      ,
+    parameter          DATA_WIDTH     = 32            ,
+    parameter          WRITE_CONTROL  = "COUNTER"     ,
+    parameter          DEPTH          = 32            ,
+    //
+    localparam integer KEEP_WIDTH     = (DATA_WIDTH/8),
+    localparam integer N_BYTES        = (DATA_WIDTH/8)
 ) (
-    input  logic                     clk          ,
-    input  logic                     reset        ,
-    
-    input  logic [((N_BYTES*8)-1):0] s_axis_tdata ,
-    input  logic [              7:0] s_axis_tuser , // tuser or tdest for addressation data
-    input  logic [      N_BYTES-1:0] s_axis_tkeep ,
-    input  logic                     s_axis_tvalid,
-    output logic                     s_axis_tready,
-    input  logic                     s_axis_tlast ,
-
-    output logic [((N_BYTES*8)-1):0] m_axis_tdata ,
-    output logic [      N_BYTES-1:0] m_axis_tkeep ,
-    output logic [              7:0] m_axis_tuser ,
-    output logic                     m_axis_tvalid,
-    input  logic                     m_axis_tready,
-    output logic                     m_axis_tlast ,
-    
-    input  logic                     scl_i        ,
-    input  logic                     sda_i        ,
-    output logic                     scl_t        ,
-    output logic                     sda_t
+    input  logic                  i_clk          ,
+    input  logic                  i_reset        ,
+    //
+    input  logic [DATA_WIDTH-1:0] i_s_axis_tdata ,
+    input  logic [           7:0] i_s_axis_tuser , // tuser or tdest for addressation data
+    input  logic [KEEP_WIDTH-1:0] i_s_axis_tkeep ,
+    input  logic                  i_s_axis_tlast ,
+    input  logic                  i_s_axis_tvalid,
+    output logic                  o_s_axis_tready,
+    //
+    output logic [DATA_WIDTH-1:0] o_m_axis_tdata ,
+    output logic [KEEP_WIDTH-1:0] o_m_axis_tkeep ,
+    output logic [           7:0] o_m_axis_tuser ,
+    output logic                  o_m_axis_tlast ,
+    output logic                  o_m_axis_tvalid,
+    input  logic                  i_m_axis_tready,
+    //
+    input  logic                  i_scl_i        ,
+    input  logic                  i_sda_i        ,
+    output logic                  o_scl_t        ,
+    output logic                  o_sda_t
 );
 
     
     localparam DURATION      = (CLK_PERIOD/CLK_I2C_PERIOD);
     localparam DURATION_DIV2 = ((DURATION)/2)-1           ;
     localparam DURATION_DIV4 = ((DURATION)/4)             ;
-    localparam DATA_WIDTH    = (N_BYTES*8)                ;
+    //
 
     logic [$clog2(DURATION)-1:0] duration_cnt         = '{default:0};
     logic [$clog2(DURATION)-1:0] duration_cnt_shifted = '{default:0};
@@ -46,7 +49,8 @@ module axis_iic_bridge #(
     logic [                 2:0] bit_cnt              = '{default:0};
     logic                        has_ack              = 1'b0        ;
 
-    logic d_scl_i     = 1'b1;
+    logic scl_i_registered     = 1'b1;
+    logic d_scl_i_registered   = 1'b1;
     logic scl_i_event = 1'b0;
 
     logic [                7:0] i2c_address       = '{default:0};
@@ -81,8 +85,9 @@ module axis_iic_bridge #(
     logic                    out_full                   ;
     logic                    out_awfull                 ;
 
-    logic d_sda_i;
-    logic has_bus_busy = 1'b0;
+    logic sda_i_registered         ;
+    logic d_sda_i_registered       ;
+    logic has_bus_busy       = 1'b0;
 
     typedef enum {
         IDLE_ST,
@@ -106,13 +111,12 @@ module axis_iic_bridge #(
         // low = (((n_bytes-1)-index)*8);
         // high_ = ((index+1)*8)-1;
         // low_ = (index*8);
-        always_comb begin
-            s_axis_tdata_swap[((N_BYTES-index)*8)-1:(((N_BYTES-1)-index)*8)] = s_axis_tdata[(((index+1)*8)-1):(index*8)];
-        end
+        always_comb s_axis_tdata_swap[((N_BYTES-index)*8)-1:(((N_BYTES-1)-index)*8)] = i_s_axis_tdata[(((index+1)*8)-1):(index*8)];
 
     end 
 
-    always_ff @(posedge clk) begin 
+
+    always_ff @(posedge i_clk) begin 
         if (in_rden) begin 
             if (in_dout_last)
                 last_reached_flaq <= 1'b1;
@@ -121,11 +125,12 @@ module axis_iic_bridge #(
         end 
     end 
 
-    always_ff @(posedge clk) begin 
+
+    always_ff @(posedge i_clk) begin 
         case (current_state)
             WAIT_ACK_ST : 
                 if (clk_assert) begin 
-                    if (sda_i) begin 
+                    if (i_sda_i) begin 
                         bad_transmission_flaq <= 1'b1;
                     end else begin 
                         bad_transmission_flaq <= 1'b0;
@@ -140,7 +145,7 @@ module axis_iic_bridge #(
         endcase
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state) 
                 WAIT_WRITE_ACK_ST : // TO DO : probably in this state fsm goes to FLUSH, if no ACK flaq received
@@ -158,19 +163,19 @@ module axis_iic_bridge #(
         end 
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (duration_cnt < (DURATION-1)) 
             duration_cnt <= duration_cnt + 1;
         else 
             duration_cnt <= '{default:0};
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (duration_cnt == (DURATION_DIV4))
             allow_counting <= 1'b1;
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (allow_counting) 
             if (duration_cnt_shifted < (DURATION-1)) begin 
                 duration_cnt_shifted <= duration_cnt_shifted + 1;
@@ -179,84 +184,84 @@ module axis_iic_bridge #(
             end 
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (duration_cnt == (DURATION-1)) 
             has_event <= 1'b1;
         else 
             has_event <= 1'b0;
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (duration_cnt_shifted == (DURATION_DIV2)) 
             clk_deassert <= 1'b1;
         else 
             clk_deassert <= 1'b0;
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (duration_cnt_shifted == (DURATION-1)) 
             clk_assert <= 1'b1;
         else 
             clk_assert <= 1'b0;
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         case (current_state) 
             IDLE_ST : 
-                scl_t <= 1'b1;
+                o_scl_t <= 1'b1;
 
             START_ST : 
                 if (clk_assert) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             TX_ADDR_ST: 
                 if (duration_cnt_shifted == (DURATION-1))
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
                 else if (duration_cnt_shifted == DURATION_DIV2) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             WAIT_ACK_ST: 
                 if (duration_cnt_shifted == (DURATION-1))
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
                 else if (duration_cnt_shifted == DURATION_DIV2) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             WRITE_ST : 
                 if (duration_cnt_shifted == (DURATION-1))
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
                 else if (duration_cnt_shifted == DURATION_DIV2) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             WAIT_WRITE_ACK_ST : 
                 if (duration_cnt_shifted == (DURATION-1))
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
                 else if (duration_cnt_shifted == DURATION_DIV2) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             READ_ST : 
                 if (duration_cnt_shifted == (DURATION-1))
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
                 else if (duration_cnt_shifted == DURATION_DIV2) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             WAIT_READ_ACK_ST : 
                 if (duration_cnt_shifted == (DURATION-1))
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
                 else if (duration_cnt_shifted == DURATION_DIV2) 
-                    scl_t <= 1'b0;
+                    o_scl_t <= 1'b0;
 
             STOP_ST : 
                 if (clk_assert)
-                    scl_t <= 1'b1;
+                    o_scl_t <= 1'b1;
 
             default : 
-                scl_t <= 1'b1;
+                o_scl_t <= 1'b1;
         endcase // current_state_
     end 
 
 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event)
             case (current_state)
                 FLUSH_ST : 
@@ -270,72 +275,86 @@ module axis_iic_bridge #(
 
     
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state)
                 IDLE_ST : 
                     if (!in_empty) begin 
                         if (in_dout_data) begin 
-                            sda_t <= 1'b0;
+                            o_sda_t <= 1'b0;
                         end else begin 
-                            sda_t <= 1'b1;
+                            o_sda_t <= 1'b1;
                         end 
                     end else begin  
-                        sda_t <= 1'b1;
+                        o_sda_t <= 1'b1;
                     end 
 
                 START_ST : 
-                    sda_t <= i2c_address[7];
+                    o_sda_t <= i2c_address[7];
 
                 TX_ADDR_ST : 
                     if (bit_cnt) begin 
-                        sda_t <= i2c_address[7];
+                        o_sda_t <= i2c_address[7];
                     end else begin 
-                        sda_t <= 1'b1;
+                        o_sda_t <= 1'b1;
                     end 
 
                 WAIT_ACK_ST : 
                     if (has_read_op) begin 
                         // if read operation
-                        sda_t <= 1'b1;
+                        o_sda_t <= 1'b1;
                     end else begin 
-                        sda_t <= in_dout_data_shift[(DATA_WIDTH-1)];
+                        o_sda_t <= in_dout_data_shift[(DATA_WIDTH-1)];
                     end 
 
                 WRITE_ST :
                     if (bit_cnt) 
-                        sda_t <= in_dout_data_shift[(DATA_WIDTH-1)]; //TO DO : Here is data
+                        o_sda_t <= in_dout_data_shift[(DATA_WIDTH-1)]; //TO DO : Here is data
                     else
-                        sda_t <= 1'b1;
+                        o_sda_t <= 1'b1;
 
                 WAIT_WRITE_ACK_ST : 
-                    sda_t <= in_dout_data_shift[(DATA_WIDTH-1)]; //TO DO : Here is data
+                    // if (has_ack)  
+                    //     if (transmission_size) begin 
+                    //         current_state <= WRITE_ST;
+                    //     end else begin 
+                    //         current_state <= STOP_ST;
+                    //     end 
+                    if (has_ack) 
+                        if (transmission_size) begin 
+                            o_sda_t <= in_dout_data_shift[(DATA_WIDTH-1)]; //TO DO : Here is data
+                        end else begin 
+                            o_sda_t <= 1'b0;
+                        end 
 
                 READ_ST : 
                     if (bit_cnt) 
-                        sda_t <= 1'b1;
+                        o_sda_t <= 1'b1;
                     else begin 
                         if (has_nack_required)
-                            sda_t <= 1'b1;
+                            o_sda_t <= 1'b1;
                         else 
-                            sda_t <= 1'b0;
+                            o_sda_t <= 1'b0;
                     end 
 
                 WAIT_READ_ACK_ST: 
                     if (transmission_size)
-                        sda_t <= 1'b1;
+                        o_sda_t <= 1'b1;
                     else 
-                        sda_t <= 1'b0;
+                        o_sda_t <= 1'b0;
+
+                // STOP_ST : 
+                //     o_sda_t <= 1'b0;
 
                 default : 
-                    sda_t <= 1'b1;
+                    o_sda_t <= 1'b1;
 
             endcase
         end 
     end 
 
-    always_ff @(posedge clk) begin 
-        if (reset) begin 
+    always_ff @(posedge i_clk) begin 
+        if (i_reset) begin 
             current_state <= IDLE_ST;
         end else begin 
 
@@ -415,7 +434,7 @@ module axis_iic_bridge #(
         end 
     end 
 
-    always_ff @(posedge clk) begin
+    always_ff @(posedge i_clk) begin
         if (has_event)
             case (current_state) 
                 IDLE_ST : 
@@ -432,7 +451,7 @@ module axis_iic_bridge #(
             endcase
     end
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event)
             case (current_state)
                 IDLE_ST : 
@@ -443,7 +462,7 @@ module axis_iic_bridge #(
             endcase // current_state
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state) 
 
@@ -462,11 +481,11 @@ module axis_iic_bridge #(
         end 
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         case (current_state)
             WAIT_ACK_ST : 
                 if (clk_assert) begin 
-                    if (!sda_i) begin 
+                    if (!sda_i_registered) begin 
                         has_ack <= 1'b1;
                     end else begin   
                         has_ack <= 1'b0;
@@ -475,7 +494,7 @@ module axis_iic_bridge #(
 
             WAIT_WRITE_ACK_ST : 
                 if (clk_assert) begin 
-                    if (!sda_i) begin 
+                    if (!sda_i_registered) begin 
                         has_ack <= 1'b1;
                     end else begin   
                         has_ack <= 1'b0;
@@ -502,18 +521,18 @@ module axis_iic_bridge #(
         .HAS_TKEEP  (1'b1      ),
         .HAS_TLAST  (1'b1      )
     ) mp_xpm_fifo_in_sync_inst (
-        .i_clk          (clk              ),
-        .i_reset        (reset            ),
+        .i_clk          (i_clk            ),
+        .i_reset        (i_reset          ),
         //
         .i_s_axis_tdata (s_axis_tdata_swap),
         .i_s_axis_tstrb ('0               ),
-        .i_s_axis_tkeep (s_axis_tkeep     ),
+        .i_s_axis_tkeep (i_s_axis_tkeep   ),
         .i_s_axis_tid   ('0               ),
         .i_s_axis_tdest ('0               ),
-        .i_s_axis_tuser (s_axis_tuser     ),
-        .i_s_axis_tlast (s_axis_tlast     ),
-        .i_s_axis_tvalid(s_axis_tvalid    ),
-        .o_s_axis_tready(s_axis_tready    ),
+        .i_s_axis_tuser (i_s_axis_tuser   ),
+        .i_s_axis_tlast (i_s_axis_tlast   ),
+        .i_s_axis_tvalid(i_s_axis_tvalid  ),
+        .o_s_axis_tready(o_s_axis_tready  ),
         //
         .o_dout_data    (in_dout_data     ),
         .o_dout_strb    (                 ),
@@ -527,7 +546,7 @@ module axis_iic_bridge #(
         //
     );
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state)
                 TX_ADDR_ST : 
@@ -554,7 +573,7 @@ module axis_iic_bridge #(
     end 
 
     /*Read Enable signal for input fifo*/
-    always_ff @(posedge clk) begin : in_rden_processing
+    always_ff @(posedge i_clk) begin : in_rden_processing
         if (has_event) begin  
             case (current_state) 
                 IDLE_ST : 
@@ -591,7 +610,7 @@ module axis_iic_bridge #(
         end 
     end 
 
-    always_ff @(posedge clk) begin : word_byte_counter_proc
+    always_ff @(posedge i_clk) begin : word_byte_counter_proc
         if (has_event) 
             case (current_state)
 
@@ -621,7 +640,7 @@ module axis_iic_bridge #(
 
 
     for (genvar index = 0; index < N_BYTES; index++) begin : GEN_SWAP_TRANSMISSION_SIZE
-        always_ff @(posedge clk) begin
+        always_ff @(posedge i_clk) begin
             if (has_event) begin 
                 case (current_state) 
                     IDLE_ST: 
@@ -648,7 +667,7 @@ module axis_iic_bridge #(
         end 
     end 
 
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (transmission_size == 0)
             has_nack_required <= 1'b1;
         else 
@@ -667,35 +686,36 @@ module axis_iic_bridge #(
         //
         .HAS_TSTRB  (1'b0      ),
         .HAS_TKEEP  (1'b1      ),
-        .HAS_TLAST  (1'b1      )) 
-    mp_xpm_fifo_out_sync_inst (
-        .i_clk          (clk          ),
-        .i_reset        (reset        ),
-        .i_din_data     (out_din_data ),
-        .i_din_strb     ('0           ),
-        .i_din_keep     (out_din_keep ),
-        .i_din_id       ('0           ),
-        .i_din_dest     ('0           ),
-        .i_din_user     (out_din_user ),
-        .i_din_last     (out_din_last ),
-        .i_wren         (out_wren     ),
-        .o_full         (out_full     ),
-        .o_awfull       (out_awfull   ),
+        .HAS_TLAST  (1'b1      )
+    ) mp_xpm_fifo_out_sync_inst (
+        .i_clk          (i_clk          ),
+        .i_reset        (i_reset        ),
+        .i_din_data     (out_din_data   ),
+        .i_din_strb     ('0             ),
+        .i_din_keep     (out_din_keep   ),
+        .i_din_id       ('0             ),
+        .i_din_dest     ('0             ),
+        .i_din_user     (out_din_user   ),
+        .i_din_last     (out_din_last   ),
+        .i_wren         (out_wren       ),
+        .o_full         (out_full       ),
+        .o_awfull       (out_awfull     ),
         //
-        .o_m_axis_tdata (m_axis_tdata ),
-        .o_m_axis_tstrb (             ),
-        .o_m_axis_tkeep (m_axis_tkeep ),
-        .o_m_axis_tid   (             ),
-        .o_m_axis_tdest (             ),
-        .o_m_axis_tuser (m_axis_tuser ),
-        .o_m_axis_tlast (m_axis_tlast ),
-        .o_m_axis_tvalid(m_axis_tvalid),
-        .i_m_axis_tready(m_axis_tready));
+        .o_m_axis_tdata (o_m_axis_tdata ),
+        .o_m_axis_tstrb (               ),
+        .o_m_axis_tkeep (o_m_axis_tkeep ),
+        .o_m_axis_tid   (               ),
+        .o_m_axis_tdest (               ),
+        .o_m_axis_tuser (o_m_axis_tuser ),
+        .o_m_axis_tlast (o_m_axis_tlast ),
+        .o_m_axis_tvalid(o_m_axis_tvalid),
+        .i_m_axis_tready(i_m_axis_tready)
+    );
 
     /* 
      * 
      */
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         case (current_state)
             READ_ST : 
                 if (!bit_cnt)
@@ -713,7 +733,7 @@ module axis_iic_bridge #(
      * 1) current word fully received from iic device 
      * 2) last halfword received (determine from transmission_size)
      */
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state)
                 READ_ST : 
@@ -744,11 +764,11 @@ module axis_iic_bridge #(
      * output data presented as N_BYTES count of 8 bit registers 
      * which addressation dependent word_byte_counter register
      */
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         case (current_state) 
             READ_ST : 
                 if (scl_i_event)
-                    out_din_data[word_byte_counter] <= {out_din_data[word_byte_counter][6:0], sda_i};
+                    out_din_data[word_byte_counter] <= {out_din_data[word_byte_counter][6:0], sda_i_registered};
 
             default : 
                 out_din_data <= out_din_data;
@@ -760,7 +780,7 @@ module axis_iic_bridge #(
     /* 
      * KEEP signal required for support AXI-Stream with last halfword, when data count not multiple N_BYTES value
      */
-    always_ff @(posedge clk) begin : out_din_keep_proc 
+    always_ff @(posedge i_clk) begin : out_din_keep_proc 
         if (out_wren) begin 
             out_din_keep <= '{default:0};
         end else begin 
@@ -781,7 +801,7 @@ module axis_iic_bridge #(
     /* 
      * save device address for next transmission if operation read performed
      */
-    always_ff @(posedge clk) begin 
+    always_ff @(posedge i_clk) begin 
         case (current_state) 
             IDLE_ST : 
                 out_din_user <= in_dout_user;
@@ -793,36 +813,42 @@ module axis_iic_bridge #(
     end 
 
     /*FF for create event when i2c clk changed*/
-    always_ff @(posedge clk) begin 
-        d_scl_i <= scl_i;
+    always_ff @(posedge i_clk) begin : scl_i_registered_processing 
+        scl_i_registered <= i_scl_i;
     end 
 
-    always_comb begin 
-        if (scl_i & ~d_scl_i)
-            scl_i_event = 1'b1;
-        else 
-            scl_i_event = 1'b0;
+    always_ff @(posedge i_clk) begin : dd_i_clk_i_processing 
+        d_scl_i_registered <= scl_i_registered;
     end 
+
+
+    always_ff @(posedge i_clk) begin 
+        scl_i_event <= scl_i_registered & ~d_scl_i_registered;
+    end
 
 
     /*ff for determine event when input data change state*/
-    always_ff @(posedge clk) begin : d_sda_i_proc
-        d_sda_i <= sda_i;
+    always_ff @(posedge i_clk) begin : sda_i_registered_proc
+        sda_i_registered <= i_sda_i;
     end
+
+    always_ff @(posedge i_clk) begin 
+        d_sda_i_registered <= sda_i_registered;
+    end 
 
     /* 
      * Signal for ability determine multimaster mode
      * when no active transactions on i2c bus, and when SDA goes to LOW state, but SCL is HIGH, 
      * then another master i2c perform operation
      */
-    always_ff @(posedge clk) begin : has_bus_busy_proc
+    always_ff @(posedge i_clk) begin : has_bus_busy_proc
         case (current_state)
             IDLE_ST : 
-                if (d_sda_i & !sda_i & scl_i)
+                if (d_sda_i_registered & !sda_i_registered & scl_i_registered)
                     has_bus_busy <= 1'b1;
 
             AWAIT_OTHER_MASTER_ST : 
-                if  (sda_i & !d_sda_i & scl_i)
+                if  (sda_i_registered & !d_sda_i_registered & scl_i_registered)
                     has_bus_busy <= 1'b0;
 
             default : 

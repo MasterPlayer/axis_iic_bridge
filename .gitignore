@@ -1,0 +1,6 @@
+/prj/tcl/axis_iic_bridge
+/prj/sdk/.metadata
+/prj/sdk/axis_iic_bridge_top/ps7_cortexa9_0
+/prj/sdk/axis_iic_bridge_top/zynq_fsbl
+prj/sdk/testapp/testapp.prj
+prj/sdk/testapp/src/Xilinx.spec
