@@ -160,7 +160,22 @@ module tb_slave_device_model (
         endcase // duration_fsm_state
     end 
 
+    logic duration_cnt_event = 1'b0;
 
+    always_ff @(posedge i_clk) begin : duration_cnt_event_processing 
+        case (duration_fsm_state)
+            WAIT_START_EVENT_ST : 
+                duration_cnt_event <= 1'b0;
+
+            default : 
+                if (duration_cnt < duration) begin 
+                    duration_cnt_event <= 1'b0;
+                end else begin 
+                    duration_cnt_event <= 1'b1;
+                end 
+
+        endcase // duration_fsm_state
+    end 
 
     always_ff @(posedge i_clk) begin : duration_cnt_shifted_processing 
         case (duration_fsm_state)
@@ -336,7 +351,8 @@ module tb_slave_device_model (
                 iic_sda_o <= iic_sda_i;
 
             TX_ACK_ST : 
-                if (has_event) begin 
+                // if (has_event) begin 
+                if (duration_cnt_event) begin 
                     iic_sda_o <= 1'b0;
                 end else begin 
                     iic_sda_o <= iic_sda_o;
@@ -350,7 +366,11 @@ module tb_slave_device_model (
                 // end 
 
             TX_DATA_ST : 
-                iic_sda_o <= register_file[ptr][bit_cnt];
+                if (duration_cnt_event) begin 
+                    iic_sda_o <= register_file[ptr][bit_cnt];
+                end else begin 
+                    iic_sda_o <= iic_sda_o;
+                end 
 
             default : 
                 iic_sda_o <= iic_sda_o;
@@ -361,14 +381,14 @@ module tb_slave_device_model (
 
     always_ff @(posedge i_clk) begin : iic_scl_o_processing 
         case (current_state)
-            RX_ADDR_ST : 
-                iic_scl_o <= iic_scl_i;
+            // RX_ADDR_ST : 
+            //     iic_scl_o <= iic_scl_i;
 
-            TX_ACK_ST: 
-                iic_scl_o <= iic_scl_i;
+            // TX_ACK_ST: 
+            //     iic_scl_o <= iic_scl_i;
 
-            TX_DATA_ST : 
-                iic_scl_o <= iic_scl_i;
+            // TX_DATA_ST : 
+            //     iic_scl_o <= iic_scl_i;
 
             default : 
                 iic_scl_o <= iic_scl_i;
