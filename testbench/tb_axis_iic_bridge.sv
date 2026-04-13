@@ -3,7 +3,7 @@
 module tb_axis_iic_bridge ();
 
 
-    parameter CLK_PERIOD     = 100000000 ;
+    parameter CLK_PERIOD     = 10000000 ;
     parameter CLK_I2C_PERIOD = 400000   ;
     parameter N_BYTES        = 1        ;
     parameter WRITE_CONTROL  = "COUNTER";
@@ -29,7 +29,7 @@ module tb_axis_iic_bridge ();
     //
     logic                     i_scl_i                     ;
     logic                     i_sda_i                     ;
-    logic                     o_scl_t                       ;
+    logic                     o_scl_t                     ;
     logic                     o_sda_t                     ;
 
     integer index = 0;
@@ -37,7 +37,7 @@ module tb_axis_iic_bridge ();
     initial begin 
         clk = 1'b1;
         forever 
-            #5000 clk = ~clk;
+            #50000 clk = ~clk;
     end 
 
     always_ff @(posedge clk) begin 
@@ -56,11 +56,10 @@ module tb_axis_iic_bridge ();
 
         case (index) 
 
-               2000 : begin s_axis_tdata <= 8'h01; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b0; end 
-               2001 : begin s_axis_tdata <= 8'h81; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
-                // 202 : begin s_axis_tdata <= 8'h00; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
+                2000 : begin s_axis_tdata <= 8'h01; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b0; end 
+                2001 : begin s_axis_tdata <= 8'h81; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
 
-              20000 : begin s_axis_tdata <= 8'h38; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
+               20000 : begin s_axis_tdata <= 8'h38; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
 
               200000 : begin s_axis_tdata <= 8'h01; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b0; end 
               200001 : begin s_axis_tdata <= 8'hAA; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 

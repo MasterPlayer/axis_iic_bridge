@@ -59,6 +59,31 @@ module tb_slave_device_model (
 
     duration_fsm duration_fsm_state = WAIT_START_EVENT_ST; 
 
+
+    integer duration_cnt         = '{default:0};
+    integer duration_cnt_shifted = '{default:0};
+
+
+    logic duration_cnt_event = 1'b0;
+
+    typedef enum {
+        WAIT_START_ST, 
+        RX_ADDR_ST,
+        TX_ACK_ST,
+        RX_DATA_ST,
+        TX_DATA_ST
+    } fsm;
+
+
+    fsm current_state = WAIT_START_ST;
+
+
+    logic   [7:0] iic_address                ;
+    logic   [2:0] bit_cnt      = '{default:0};
+    logic   [7:0] ptr                        ;
+    integer       word_counter = 0           ;
+
+
     always_ff @(posedge i_clk) begin 
         d_iic_sda_i <= iic_sda_i;
     end 
@@ -109,7 +134,6 @@ module tb_slave_device_model (
     end 
     
 
-
     always_ff @(posedge i_clk) begin : duration_div4_processing 
         case (duration_fsm_state)
 
@@ -130,15 +154,8 @@ module tb_slave_device_model (
     end 
 
 
-
     always_comb duration_div2 = duration_div4 << 1;
     always_comb duration      = duration_div4 << 2;
-
-
-
-    integer duration_cnt         = '{default:0};
-    integer duration_cnt_shifted = '{default:0};
-
 
 
     always_ff @(posedge i_clk) begin : duration_cnt_processing 
@@ -160,7 +177,6 @@ module tb_slave_device_model (
         endcase // duration_fsm_state
     end 
 
-    logic duration_cnt_event = 1'b0;
 
     always_ff @(posedge i_clk) begin : duration_cnt_event_processing 
         case (duration_fsm_state)
@@ -177,6 +193,7 @@ module tb_slave_device_model (
         endcase // duration_fsm_state
     end 
 
+
     always_ff @(posedge i_clk) begin : duration_cnt_shifted_processing 
         case (duration_fsm_state)
             WAIT_STOP_EVENT_ST: 
@@ -191,40 +208,6 @@ module tb_slave_device_model (
 
         endcase // duration_fsm_state
     end 
-
-
-
-    logic has_event;
-
-
-
-    always_ff @(posedge i_clk) begin : has_event_processing 
-        case (duration_fsm_state)
-            
-            WAIT_STOP_EVENT_ST : 
-                if (duration_cnt == duration) begin 
-                    has_event <= 1'b1;
-                end else begin 
-                    has_event <= 1'b0;
-                end 
-
-            default : 
-                has_event <= 1'b0;
-
-        endcase // duration_fsm_state
-    end 
-
-
-    typedef enum {
-        WAIT_START_ST, 
-        RX_ADDR_ST,
-        TX_ACK_ST,
-        RX_DATA_ST,
-        TX_DATA_ST
-    } fsm;
-
-
-    fsm current_state = WAIT_START_ST;
 
 
     always_ff @(posedge i_clk) begin : current_state_processing 
@@ -293,9 +276,6 @@ module tb_slave_device_model (
     end 
 
 
-    logic [7:0] iic_address;
-
-
     always_ff @(posedge i_clk) begin : iic_address_processing 
         case (current_state)
             RX_ADDR_ST: 
@@ -310,9 +290,6 @@ module tb_slave_device_model (
 
         endcase // current_state
     end 
-
-
-    logic [2:0] bit_cnt = '{default:0};
 
 
     always_ff @(posedge i_clk) begin : bit_cnt_processing 
@@ -351,7 +328,6 @@ module tb_slave_device_model (
                 iic_sda_o <= iic_sda_i;
 
             TX_ACK_ST : 
-                // if (has_event) begin 
                 if (duration_cnt_event) begin 
                     iic_sda_o <= 1'b0;
                 end else begin 
@@ -359,11 +335,7 @@ module tb_slave_device_model (
                 end 
 
             RX_DATA_ST : 
-                // if (has_event) begin 
                 iic_sda_o <= iic_sda_i;
-                // end else begin 
-                //     iic_sda_o <= iic_sda_o;
-                // end 
 
             TX_DATA_ST : 
                 if (duration_cnt_event) begin 
@@ -373,30 +345,15 @@ module tb_slave_device_model (
                 end 
 
             default : 
-                iic_sda_o <= iic_sda_o;
+                iic_sda_o <= iic_sda_i;
 
         endcase // current_state
     end 
 
 
     always_ff @(posedge i_clk) begin : iic_scl_o_processing 
-        case (current_state)
-            // RX_ADDR_ST : 
-            //     iic_scl_o <= iic_scl_i;
-
-            // TX_ACK_ST: 
-            //     iic_scl_o <= iic_scl_i;
-
-            // TX_DATA_ST : 
-            //     iic_scl_o <= iic_scl_i;
-
-            default : 
-                iic_scl_o <= iic_scl_i;
-        endcase // duration_fsm_state
+        iic_scl_o <= iic_scl_i;
     end 
-
-
-    logic [7:0] ptr;
 
 
     always_ff @(posedge i_clk) begin : ptr_processing  
@@ -423,8 +380,6 @@ module tb_slave_device_model (
     end 
 
 
-    integer word_counter = 0;
-
     always_ff @(posedge i_clk) begin : word_counter_processing 
         case (current_state)
             RX_DATA_ST : 
@@ -444,5 +399,6 @@ module tb_slave_device_model (
                 word_counter <= word_counter;
         endcase // current_state
     end 
+
 
 endmodule
