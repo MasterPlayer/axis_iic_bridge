@@ -1,5 +1,5 @@
 # axis_iic_bridge
- FPGA implementation I2C bridge with support AXI-Stream protocol. There are proprietary protocol of data structure. 
+ FPGA implementation I2C bridge with support AXI-Stream protocol. There are proprietary protocol of data structure. Component might be used as submodule for provide IIC interface. 
 
 ## Catalog Structure
 ```
@@ -70,3 +70,5 @@ Component works on AXI-Stream interface, single clocked, with support TUSER and 
 for DATA_WIDTH = 8 bytes first word on S_AXIS_ bus determines how must words will be sended(for write operation) or readed(for read operation) with slave device. In this case, first word is not transmit on IIC bus and used ONLY internally for data word counting. 
 
 TODO : add pictures
+
+### Limitations 
