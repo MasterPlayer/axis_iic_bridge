@@ -70,13 +70,14 @@ module axis_iic_bridge #(
     logic [(DATA_WIDTH-1):0] s_axis_tdata_swap           ;
 
     logic [(DATA_WIDTH-1):0] in_dout_data                     ;
+    logic [(DATA_WIDTH-1):0] in_dout_data_swap                ;
     logic [(DATA_WIDTH-1):0] in_dout_data_shift = '{default:0};
     logic [   (N_BYTES-1):0] in_dout_keep                     ;
     logic [             7:0] in_dout_user                     ;
     logic                    in_dout_last                     ;
     logic                    in_rden            = 1'b0        ;
     logic                    in_empty                         ;
-
+    //
     logic [N_BYTES-1:0][7:0] out_din_data = '{default:0};
     logic [N_BYTES-1:0]      out_din_keep = '{default:0};
     logic [        7:0]      out_din_user = '{default:0};
@@ -84,9 +85,10 @@ module axis_iic_bridge #(
     logic                    out_wren     = 1'b0        ;
     logic                    out_full                   ;
     logic                    out_awfull                 ;
-
-    logic sda_i_registered         ;
+    //
+    logic   sda_i_registered       ;
     logic d_sda_i_registered       ;
+    //
     logic has_bus_busy       = 1'b0;
 
     typedef enum {
@@ -550,18 +552,25 @@ module axis_iic_bridge #(
         if (has_event) begin 
             case (current_state)
                 TX_ADDR_ST : 
-                    if (!bit_cnt) 
+                    if (!bit_cnt) begin 
                         in_dout_data_shift <= in_dout_data;
+                    end else begin 
+                        in_dout_data_shift <= in_dout_data_shift;
+                    end 
                 
                 WAIT_ACK_ST : 
                     in_dout_data_shift <= {in_dout_data_shift[DATA_WIDTH-2:0], 1'b0};
 
                 WRITE_ST : 
-                    if (bit_cnt)
+                    if (bit_cnt) begin 
                         in_dout_data_shift <= {1'b0, in_dout_data_shift[DATA_WIDTH-2:0], 1'b0};
-                    else 
-                        if (word_byte_counter == (N_BYTES-1)) 
+                    end else begin 
+                        if (word_byte_counter == (N_BYTES-1)) begin 
                             in_dout_data_shift <= in_dout_data;
+                        end else begin 
+                            in_dout_data_shift <= in_dout_data_shift;
+                        end 
+                    end 
 
                 WAIT_WRITE_ACK_ST: 
                     in_dout_data_shift <= {in_dout_data_shift[DATA_WIDTH-2:0], 1'b0};
@@ -639,31 +648,35 @@ module axis_iic_bridge #(
     end 
 
 
-    for (genvar index = 0; index < N_BYTES; index++) begin : GEN_SWAP_TRANSMISSION_SIZE
-        always_ff @(posedge i_clk) begin
-            if (has_event) begin 
-                case (current_state) 
-                    IDLE_ST: 
-                        if (!in_empty)
-                            transmission_size[((N_BYTES-index)*8)-1:(((N_BYTES-1)-index)*8)] <= in_dout_data[(((index+1)*8)-1):(index*8)];
+    generate 
+        for (genvar index = 0; index < N_BYTES; index++) begin : GEN_SWAP_IN_DOUT_DATA_SWAP
+            always_comb in_dout_data_swap[((N_BYTES-index)*8)-1:(((N_BYTES-1)-index)*8)] = in_dout_data[(((index+1)*8)-1):(index*8)];
+        end 
+    endgenerate
 
-                    WAIT_ACK_ST : 
-                        transmission_size <= transmission_size - 1;
+    always_ff @(posedge i_clk) begin
+        if (has_event) begin 
+            case (current_state) 
+                IDLE_ST: 
+                    if (!in_empty)
+                        transmission_size <= in_dout_data_swap;
 
-                    // WRITE_ST:
-                    WAIT_WRITE_ACK_ST:  
-                        // if (!bit_cnt) 
-                        transmission_size <= transmission_size - 1;
+                WAIT_ACK_ST : 
+                    transmission_size <= transmission_size - 1;
 
-                    WAIT_READ_ACK_ST : 
-                        // if (!bit_cnt)
-                        transmission_size <= transmission_size - 1;
+                // WRITE_ST:
+                WAIT_WRITE_ACK_ST:  
+                    // if (!bit_cnt) 
+                    transmission_size <= transmission_size - 1;
 
-                    default: 
-                        transmission_size <= transmission_size;
+                WAIT_READ_ACK_ST : 
+                    // if (!bit_cnt)
+                    transmission_size <= transmission_size - 1;
 
-                endcase // current_state
-            end 
+                default: 
+                    transmission_size <= transmission_size;
+
+            endcase // current_state
         end 
     end 
 
