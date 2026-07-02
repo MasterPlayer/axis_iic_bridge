@@ -3,15 +3,15 @@
 
 ## Catalog Structure
 ```
-    axis_iic_interface              This repo 
-    |-->prj                         Files for create Vivado Project
-    |   |-->axis_iic_bridge_x1      Directory for implement controller bus width x1
+    axis_iic_interface             This repo 
+    |-->prj                        Files for create Vivado Project
+    |   |-->axis_iic_bridge_x1     Directory for implement controller bus width x1
     |   |  |-->ips                 IP cores for project
     |   |  |-->rtl                 RTL sources required for project
     |   |  |-->sdk                 
     |   |  |-->tcl                 TCL sources for assembling or debug project
     |   |  |-->xdc                 XDC constraints for project
-    |   |-->axis_iic_bridge_x8      Directory for implement controller bus width x8
+    |   |-->axis_iic_bridge_x8     Directory for implement controller bus width x8
     |   |  |-->ips                 IP cores for project
     |   |  |-->rtl                 RTL sources required for project
     |   |  |-->sdk                 
