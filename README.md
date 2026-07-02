@@ -3,13 +3,20 @@
 
 ## Catalog Structure
 ```
-    axis_iic_interface      This repo 
-    |-->prj                 Files for create Vivado Project
-    |   |-->ips             IP cores for project
-    |   |-->rtl             RTL sources required for project
-    |   |-->sdk             
-    |   |-->tcl             TCL sources for assembling or debug project
-    |   |-->xdc             XDC constraints for project
+    axis_iic_interface              This repo 
+    |-->prj                         Files for create Vivado Project
+    |   |-->axis_iic_bridge_x1      Directory for implement controller bus width x1
+    |   |  |-->ips                 IP cores for project
+    |   |  |-->rtl                 RTL sources required for project
+    |   |  |-->sdk                 
+    |   |  |-->tcl                 TCL sources for assembling or debug project
+    |   |  |-->xdc                 XDC constraints for project
+    |   |-->axis_iic_bridge_x8      Directory for implement controller bus width x8
+    |   |  |-->ips                 IP cores for project
+    |   |  |-->rtl                 RTL sources required for project
+    |   |  |-->sdk                 
+    |   |  |-->tcl                 TCL sources for assembling or debug project
+    |   |  |-->xdc                 XDC constraints for project
     |
     |-->src_hw              RTL files of this repo
     |-->src_sw              software files for processor application
@@ -22,7 +29,7 @@ This project hardware-tested on MyIR Z-Turn Board with FPGA xc7z020-2clg400.
 ### Assembling
 for Vivado:
 ```
-cd axis_iic_bridge/prj/tcl/
+cd axis_iic_bridge/prj/axis_iic_bridge_x1/tcl/
 source axis_iic_bridge.tcl
 ```
 Project assembling will be started, but runs is not started for this stage. Synthesis/Implementation runs from user action. 
