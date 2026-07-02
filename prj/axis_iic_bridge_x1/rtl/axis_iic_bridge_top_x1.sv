@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 
-module axis_iic_bridge_top (
+module axis_iic_bridge_top_x1 (
     inout logic [14:0] DDR_ADDR         ,
     inout logic [ 2:0] DDR_BA           ,
     inout logic        DDR_CAS_N        ,

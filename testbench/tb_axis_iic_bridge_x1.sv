@@ -1,6 +1,6 @@
 `timescale 1ps / 1ps
 
-module tb_axis_iic_bridge ();
+module tb_axis_iic_bridge_x1 ();
 
 
     parameter CLK_PERIOD     = 10000000 ;
