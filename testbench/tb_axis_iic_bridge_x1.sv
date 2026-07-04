@@ -116,4 +116,88 @@ module tb_axis_iic_bridge_x1 ();
         .iic_scl_o      ( i_scl_i     ),
         .iic_sda_o      ( i_sda_i     ));
 
+
+
+
+
+
+
+    parameter  CMD_CLK_PERIOD     = 100000000     ;
+    parameter  CMD_CLK_I2C_PERIOD = 400000        ;
+    parameter  CMD_DATA_WIDTH     = 8             ;
+    parameter  CMD_DEPTH          = 32            ;
+    parameter  CMD_SIZE_WIDTH     = 8             ;
+
+    logic [               7:0] cmd_iic_addr = '{default:0};
+    logic [CMD_SIZE_WIDTH-1:0] cmd_size     = '{default:0};
+    logic                      cmd_valid    = 1'b0        ;
+
+    logic [CMD_DATA_WIDTH-1:0] cmd_s_axis_tdata  = '{default:0};
+    logic [               7:0] cmd_s_axis_tuser  = '{default:0}; // tuser or tdest for addressation data
+    logic [               0:0] cmd_s_axis_tkeep  = '{default:0};
+    logic                      cmd_s_axis_tlast  = 1'b0        ;
+    logic                      cmd_s_axis_tvalid = 1'b0        ;
+    logic                      cmd_s_axis_tready               ;
+
+    logic [CMD_DATA_WIDTH-1:0] cmd_m_axis_tdata        ;
+    logic [               0:0] cmd_m_axis_tkeep        ;
+    logic [               7:0] cmd_m_axis_tuser        ;
+    logic                      cmd_m_axis_tlast        ;
+    logic                      cmd_m_axis_tvalid       ;
+    logic                      cmd_m_axis_tready = 1'b0;
+
+    logic cmd_scl_i;
+    logic cmd_sda_i;
+    logic cmd_scl_t;
+    logic cmd_sda_t;
+
+
+    axis_iic_bridge_cmd #(
+        .CLK_PERIOD    (CMD_CLK_PERIOD    ),
+        .CLK_I2C_PERIOD(CMD_CLK_I2C_PERIOD),
+        .DATA_WIDTH    (CMD_DATA_WIDTH    ),
+        .DEPTH         (CMD_DEPTH         ),
+        .SIZE_WIDTH    (CMD_SIZE_WIDTH    )
+    ) axis_iic_bridge_cmd_inst (
+        .i_clk          (clk              ),
+        .i_reset        (reset            ),
+        //
+        .i_cmd_iic_addr (cmd_iic_addr     ),
+        .i_cmd_size     (cmd_size         ),
+        .i_cmd_valid    (cmd_valid        ),
+        //
+        .i_s_axis_tdata (cmd_s_axis_tdata ),
+        .i_s_axis_tuser (cmd_s_axis_tuser ),   // tuser or tdest for addressation data
+        .i_s_axis_tkeep (cmd_s_axis_tkeep ),
+        .i_s_axis_tlast (cmd_s_axis_tlast ),
+        .i_s_axis_tvalid(cmd_s_axis_tvalid),
+        .o_s_axis_tready(cmd_s_axis_tready),
+        //
+        .o_m_axis_tdata (cmd_m_axis_tdata ),
+        .o_m_axis_tkeep (cmd_m_axis_tkeep ),
+        .o_m_axis_tuser (cmd_m_axis_tuser ),
+        .o_m_axis_tlast (cmd_m_axis_tlast ),
+        .o_m_axis_tvalid(cmd_m_axis_tvalid),
+        .i_m_axis_tready(cmd_m_axis_tready),
+        //
+        .i_scl_i        (cmd_scl_i        ),
+        .i_sda_i        (cmd_sda_i        ),
+        .o_scl_t        (cmd_scl_t        ),
+        .o_sda_t        (cmd_sda_t        )
+    );
+
+    always_comb cmd_m_axis_tready = 1'b1;
+
+    tb_slave_device_model tb_slave_device_model_cmd_inst (
+        .i_clk    (clk      ),
+        .i_reset  (reset    ),
+        .iic_scl_i(cmd_scl_t),
+        .iic_sda_i(cmd_sda_t),
+        .iic_scl_o(cmd_scl_i),
+        .iic_sda_o(cmd_sda_i)
+    );
+
+
+
+
 endmodule
