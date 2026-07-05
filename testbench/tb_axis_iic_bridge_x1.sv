@@ -201,7 +201,7 @@ module tb_axis_iic_bridge_x1 ();
                 // 2000 : begin cmd_s_axis_tdata <= 8'h01; cmd_s_axis_tuser <= 8'hA6; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b0; end 
                 2001 : begin cmd_s_axis_tdata <= 8'h81; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b1; end 
 
-              //  20000 : begin s_axis_tdata <= 8'h38; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
+               // 20000 : begin s_axis_tdata <= 8'h38; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
 
               // 200000 : begin s_axis_tdata <= 8'h01; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b0; end 
               // 200001 : begin s_axis_tdata <= 8'hAA; s_axis_tuser <= 8'hA6; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
@@ -225,6 +225,7 @@ module tb_axis_iic_bridge_x1 ();
     always_ff @(posedge clk) begin : cmd_processing 
         case (index)
                2000 : begin cmd_iic_addr <= 8'hA6; cmd_size <= 8'h01; cmd_valid <= 1'b1; end
+              20000 : begin cmd_iic_addr <= 8'hA7; cmd_size <= 8'h38; cmd_valid <= 1'b1; end
             default : begin cmd_iic_addr <= cmd_iic_addr; cmd_size <= cmd_size; cmd_valid <= 1'b0; end
         endcase
     end 

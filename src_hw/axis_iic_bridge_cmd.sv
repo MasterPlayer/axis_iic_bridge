@@ -435,6 +435,8 @@ module axis_iic_bridge_cmd #(
                             if (!cmd_empty) begin
                                 if (cmd_dout_size) begin // number of bytes has presented
                                     current_state <= START_ST;
+                                end else begin 
+                                    current_state <= current_state;
                                 end 
                             end 
                         end else begin 
