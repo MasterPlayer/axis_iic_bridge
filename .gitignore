@@ -9,3 +9,4 @@ prj/sdk/testapp/src/Xilinx.spec
 /axis_iic_bridge.gen
 /prj/axis_iic_bridge_x1/tcl/axis_iic_bridge
 /prj/axis_iic_bridge_x8/tcl/axis_iic_bridge
+/prj/axis_iic_bridge_x8/tcl/.Xil
