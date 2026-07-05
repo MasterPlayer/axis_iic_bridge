@@ -19,7 +19,6 @@ module axis_iic_bridge_cmd #(
     input  logic                  i_cmd_valid    ,
     //
     input  logic [DATA_WIDTH-1:0] i_s_axis_tdata ,
-    input  logic [           7:0] i_s_axis_tuser , // tuser or tdest for addressation data
     input  logic [KEEP_WIDTH-1:0] i_s_axis_tkeep ,
     input  logic                  i_s_axis_tlast ,
     input  logic                  i_s_axis_tvalid,
@@ -27,7 +26,6 @@ module axis_iic_bridge_cmd #(
     //
     output logic [DATA_WIDTH-1:0] o_m_axis_tdata ,
     output logic [KEEP_WIDTH-1:0] o_m_axis_tkeep ,
-    output logic [           7:0] o_m_axis_tuser ,
     output logic                  o_m_axis_tlast ,
     output logic                  o_m_axis_tvalid,
     input  logic                  i_m_axis_tready,
@@ -77,14 +75,12 @@ module axis_iic_bridge_cmd #(
     logic [(DATA_WIDTH-1):0] in_dout_data_swap                ;
     logic [(DATA_WIDTH-1):0] in_dout_data_shift = '{default:0};
     logic [   (N_BYTES-1):0] in_dout_keep                     ;
-    logic [             7:0] in_dout_user                     ;
     logic                    in_dout_last                     ;
     logic                    in_rden            = 1'b0        ;
     logic                    in_empty                         ;
     //
     logic [N_BYTES-1:0][7:0] out_din_data = '{default:0};
     logic [N_BYTES-1:0]      out_din_keep = '{default:0};
-    logic [        7:0]      out_din_user = '{default:0};
     logic                    out_din_last = 1'b0        ;
     logic                    out_wren     = 1'b0        ;
     logic                    out_full                   ;
@@ -112,6 +108,18 @@ module axis_iic_bridge_cmd #(
     fsm current_state = IDLE_ST;
 
     
+    localparam CMD_FIFO_WIDTH = 8 + SIZE_WIDTH;
+
+    logic [(CMD_FIFO_WIDTH-1):0] cmd_din          ;
+    logic                        cmd_wren         ;
+    logic                        cmd_full         ;
+    logic [(CMD_FIFO_WIDTH-1):0] cmd_dout         ;
+    logic [                 7:0] cmd_dout_iic_addr;
+    logic [    (SIZE_WIDTH-1):0] cmd_dout_size    ;
+    logic                        cmd_rden         ;
+    logic                        cmd_empty        ;
+
+
     for (genvar index = 0; index < N_BYTES; index++) begin : GEN_S_AXIS_TDATA_SWAP
         // high = (((n_bytes)-index)*8)-1;
         // low = (((n_bytes-1)-index)*8);
@@ -344,8 +352,8 @@ module axis_iic_bridge_cmd #(
         if (has_event) begin 
             case (current_state)
                 IDLE_ST : 
-                    if (!in_empty) begin 
-                        if (in_dout_data) begin 
+                    if (!cmd_empty) begin 
+                        if (cmd_dout_size) begin 
                             o_sda_t <= 1'b0;
                         end else begin 
                             o_sda_t <= 1'b1;
@@ -424,8 +432,8 @@ module axis_iic_bridge_cmd #(
                 case (current_state)
                     IDLE_ST : 
                         if (!has_bus_busy) begin  
-                            if (!in_empty) begin
-                                if (in_dout_data) begin // number of bytes has presented
+                            if (!cmd_empty) begin
+                                if (cmd_dout_size) begin // number of bytes has presented
                                     current_state <= START_ST;
                                 end 
                             end 
@@ -519,7 +527,7 @@ module axis_iic_bridge_cmd #(
         if (has_event)
             case (current_state) 
                 IDLE_ST : 
-                    i2c_address <= in_dout_user;
+                    i2c_address <= cmd_dout_iic_addr;
 
                 START_ST : 
                     i2c_address <= {i2c_address[6:0], 1'b0};
@@ -536,7 +544,7 @@ module axis_iic_bridge_cmd #(
         if (has_event) begin 
             case (current_state)
                 IDLE_ST : 
-                    has_read_op <= in_dout_user[0];
+                    has_read_op <= cmd_dout_iic_addr[0];
 
                 default: 
                     has_read_op <= has_read_op;
@@ -596,17 +604,26 @@ module axis_iic_bridge_cmd #(
     end 
 
 
-    localparam CMD_FIFO_WIDTH = 8 + SIZE_WIDTH;
-
-    logic [(CMD_FIFO_WIDTH-1):0] cmd_din  ;
-    logic                        cmd_wren ;
-    logic                        cmd_full ;
-    logic [(CMD_FIFO_WIDTH-1):0] cmd_dout ;
-    logic                        cmd_rden ;
-    logic                        cmd_empty;
-
     always_comb cmd_din = {i_cmd_size, i_cmd_iic_addr};
     always_comb cmd_wren = i_cmd_valid;
+    
+    always_ff @(posedge i_clk) begin : cmd_rden_processing
+        if (has_event) begin  
+            case (current_state) 
+                IDLE_ST : 
+                    if (!cmd_empty) begin 
+                        cmd_rden <= 1'b1;
+                    end else begin 
+                        cmd_rden <= 1'b0;
+                    end 
+
+                default : 
+                    cmd_rden <= 1'b0;
+            endcase
+        end else begin 
+            cmd_rden <= 1'b0;
+        end 
+    end 
 
     mp_xpm_fifo_cmd_sync #(
         .DATA_WIDTH(CMD_FIFO_WIDTH),
@@ -623,7 +640,8 @@ module axis_iic_bridge_cmd #(
         .O_EMPTY(cmd_empty)
     );
 
-
+    always_comb cmd_dout_iic_addr = cmd_dout[7:0];
+    always_comb cmd_dout_size = cmd_dout[CMD_FIFO_WIDTH:8];
 
 
     mp_xpm_fifo_in_sync #(
@@ -633,7 +651,7 @@ module axis_iic_bridge_cmd #(
         .TDATA_WIDTH(DATA_WIDTH),
         .TID_WIDTH  (0         ),
         .TDEST_WIDTH(0         ),
-        .TUSER_WIDTH(8         ),
+        .TUSER_WIDTH(0         ),
         //
         .HAS_TSTRB  (1'b0      ),
         .HAS_TKEEP  (1'b1      ),
@@ -647,7 +665,7 @@ module axis_iic_bridge_cmd #(
         .i_s_axis_tkeep (i_s_axis_tkeep   ),
         .i_s_axis_tid   ('0               ),
         .i_s_axis_tdest ('0               ),
-        .i_s_axis_tuser (i_s_axis_tuser   ),
+        .i_s_axis_tuser ('0               ),
         .i_s_axis_tlast (i_s_axis_tlast   ),
         .i_s_axis_tvalid(i_s_axis_tvalid  ),
         .o_s_axis_tready(o_s_axis_tready  ),
@@ -657,7 +675,7 @@ module axis_iic_bridge_cmd #(
         .o_dout_keep    (in_dout_keep     ),
         .o_dout_id      (                 ),
         .o_dout_dest    (                 ),
-        .o_dout_user    (in_dout_user     ),
+        .o_dout_user    (                 ),
         .o_dout_last    (in_dout_last     ),
         .i_rden         (in_rden          ),
         .o_empty        (in_empty         )
@@ -703,12 +721,6 @@ module axis_iic_bridge_cmd #(
     always_ff @(posedge i_clk) begin : in_rden_processing
         if (has_event) begin  
             case (current_state) 
-                IDLE_ST : 
-                    if (!in_empty) begin 
-                        in_rden <= 1'b1;
-                    end else begin 
-                        in_rden <= 1'b0;
-                    end 
 
                 TX_ADDR_ST : 
                     if (!bit_cnt) begin 
@@ -788,8 +800,8 @@ module axis_iic_bridge_cmd #(
         if (has_event) begin 
             case (current_state) 
                 IDLE_ST: 
-                    if (!in_empty) begin 
-                        transmission_size <= in_dout_data_swap;
+                    if (!cmd_empty) begin 
+                        transmission_size <= cmd_dout_size;
                     end else begin 
                         transmission_size <= transmission_size;
                     end 
@@ -826,7 +838,7 @@ module axis_iic_bridge_cmd #(
         .TDATA_WIDTH(DATA_WIDTH),
         .TID_WIDTH  (0         ),
         .TDEST_WIDTH(0         ),
-        .TUSER_WIDTH(8         ),
+        .TUSER_WIDTH(0         ),
         //
         .HAS_TSTRB  (1'b0      ),
         .HAS_TKEEP  (1'b1      ),
@@ -839,7 +851,7 @@ module axis_iic_bridge_cmd #(
         .i_din_keep     (out_din_keep   ),
         .i_din_id       ('0             ),
         .i_din_dest     ('0             ),
-        .i_din_user     (out_din_user   ),
+        .i_din_user     ('0             ),
         .i_din_last     (out_din_last   ),
         .i_wren         (out_wren       ),
         .o_full         (out_full       ),
@@ -850,7 +862,7 @@ module axis_iic_bridge_cmd #(
         .o_m_axis_tkeep (o_m_axis_tkeep ),
         .o_m_axis_tid   (               ),
         .o_m_axis_tdest (               ),
-        .o_m_axis_tuser (o_m_axis_tuser ),
+        .o_m_axis_tuser (               ),
         .o_m_axis_tlast (o_m_axis_tlast ),
         .o_m_axis_tvalid(o_m_axis_tvalid),
         .i_m_axis_tready(i_m_axis_tready)
@@ -952,20 +964,6 @@ module axis_iic_bridge_cmd #(
         end 
     end 
 
-
-    /* 
-     * save device address for next transmission if operation read performed
-     */
-    always_ff @(posedge i_clk) begin 
-        case (current_state) 
-            IDLE_ST : 
-                out_din_user <= in_dout_user;
-
-            default : 
-                out_din_user <= out_din_user;
-
-        endcase // current_state
-    end 
 
     /*FF for create event when i2c clk changed*/
     always_ff @(posedge i_clk) begin : scl_i_registered_processing 

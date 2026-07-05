@@ -3,7 +3,7 @@
 module tb_axis_iic_bridge_x1 ();
 
 
-    parameter CLK_PERIOD     = 10000000 ;
+    parameter CLK_PERIOD     = 100000000 ;
     parameter CLK_I2C_PERIOD = 400000   ;
     parameter N_BYTES        = 1        ;
     parameter WRITE_CONTROL  = "COUNTER";
@@ -133,7 +133,6 @@ module tb_axis_iic_bridge_x1 ();
     logic                      cmd_valid    = 1'b0        ;
 
     logic [CMD_DATA_WIDTH-1:0] cmd_s_axis_tdata  = '{default:0};
-    logic [               7:0] cmd_s_axis_tuser  = '{default:0}; // tuser or tdest for addressation data
     logic [               0:0] cmd_s_axis_tkeep  = '{default:0};
     logic                      cmd_s_axis_tlast  = 1'b0        ;
     logic                      cmd_s_axis_tvalid = 1'b0        ;
@@ -141,7 +140,6 @@ module tb_axis_iic_bridge_x1 ();
 
     logic [CMD_DATA_WIDTH-1:0] cmd_m_axis_tdata        ;
     logic [               0:0] cmd_m_axis_tkeep        ;
-    logic [               7:0] cmd_m_axis_tuser        ;
     logic                      cmd_m_axis_tlast        ;
     logic                      cmd_m_axis_tvalid       ;
     logic                      cmd_m_axis_tready = 1'b0;
@@ -167,7 +165,6 @@ module tb_axis_iic_bridge_x1 ();
         .i_cmd_valid    (cmd_valid        ),
         //
         .i_s_axis_tdata (cmd_s_axis_tdata ),
-        .i_s_axis_tuser (cmd_s_axis_tuser ),   // tuser or tdest for addressation data
         .i_s_axis_tkeep (cmd_s_axis_tkeep ),
         .i_s_axis_tlast (cmd_s_axis_tlast ),
         .i_s_axis_tvalid(cmd_s_axis_tvalid),
@@ -175,7 +172,6 @@ module tb_axis_iic_bridge_x1 ();
         //
         .o_m_axis_tdata (cmd_m_axis_tdata ),
         .o_m_axis_tkeep (cmd_m_axis_tkeep ),
-        .o_m_axis_tuser (cmd_m_axis_tuser ),
         .o_m_axis_tlast (cmd_m_axis_tlast ),
         .o_m_axis_tvalid(cmd_m_axis_tvalid),
         .i_m_axis_tready(cmd_m_axis_tready),
@@ -202,8 +198,8 @@ module tb_axis_iic_bridge_x1 ();
 
         case (index) 
 
-                2000 : begin cmd_s_axis_tdata <= 8'h01; cmd_s_axis_tuser <= 8'hA6; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b0; end 
-                2001 : begin cmd_s_axis_tdata <= 8'h81; cmd_s_axis_tuser <= 8'hA6; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b1; end 
+                // 2000 : begin cmd_s_axis_tdata <= 8'h01; cmd_s_axis_tuser <= 8'hA6; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b0; end 
+                2001 : begin cmd_s_axis_tdata <= 8'h81; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b1; end 
 
               //  20000 : begin s_axis_tdata <= 8'h38; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
 
@@ -219,10 +215,18 @@ module tb_axis_iic_bridge_x1 ();
 
               // 300000 : begin s_axis_tdata <= 8'h01; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
             
-            default: begin cmd_s_axis_tdata <= cmd_s_axis_tdata; cmd_s_axis_tuser <= cmd_s_axis_tuser; cmd_s_axis_tkeep <= cmd_s_axis_tkeep; cmd_s_axis_tvalid <= 1'b0; cmd_s_axis_tlast <= cmd_s_axis_tlast; end 
+            default: begin cmd_s_axis_tdata <= cmd_s_axis_tdata; cmd_s_axis_tkeep <= cmd_s_axis_tkeep; cmd_s_axis_tvalid <= 1'b0; cmd_s_axis_tlast <= cmd_s_axis_tlast; end 
 
         endcase // index
 
+    end 
+
+
+    always_ff @(posedge clk) begin : cmd_processing 
+        case (index)
+               2000 : begin cmd_iic_addr <= 8'hA6; cmd_size <= 8'h01; cmd_valid <= 1'b1; end
+            default : begin cmd_iic_addr <= cmd_iic_addr; cmd_size <= cmd_size; cmd_valid <= 1'b0; end
+        endcase
     end 
 
 
