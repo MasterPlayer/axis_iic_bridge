@@ -11,28 +11,32 @@ module axis_iic_bridge_cmd #(
     localparam integer KEEP_WIDTH     = (DATA_WIDTH/8),
     localparam integer N_BYTES        = (DATA_WIDTH/8)
 ) (
-    input  logic                  i_clk          ,
-    input  logic                  i_reset        ,
+    input  logic                  i_clk               ,
+    input  logic                  i_reset             ,
     //
-    input  logic [           7:0] i_cmd_iic_addr ,
-    input  logic [SIZE_WIDTH-1:0] i_cmd_size     ,
-    input  logic                  i_cmd_valid    ,
+    input  logic [           7:0] i_write_cmd_iic_addr,
+    input  logic [SIZE_WIDTH-1:0] i_write_cmd_size    ,
+    input  logic                  i_write_cmd_valid   ,
     //
-    input  logic [DATA_WIDTH-1:0] i_s_axis_tdata ,
-    input  logic [KEEP_WIDTH-1:0] i_s_axis_tkeep ,
-    input  logic                  i_s_axis_tlast ,
-    input  logic                  i_s_axis_tvalid,
-    output logic                  o_s_axis_tready,
+    input  logic [DATA_WIDTH-1:0] i_s_axis_tdata      ,
+    input  logic [KEEP_WIDTH-1:0] i_s_axis_tkeep      ,
+    input  logic                  i_s_axis_tlast      ,
+    input  logic                  i_s_axis_tvalid     ,
+    output logic                  o_s_axis_tready     ,
     //
-    output logic [DATA_WIDTH-1:0] o_m_axis_tdata ,
-    output logic [KEEP_WIDTH-1:0] o_m_axis_tkeep ,
-    output logic                  o_m_axis_tlast ,
-    output logic                  o_m_axis_tvalid,
-    input  logic                  i_m_axis_tready,
+    input  logic [           7:0] i_read_cmd_iic_addr ,
+    input  logic [SIZE_WIDTH-1:0] i_read_cmd_size     ,
+    input  logic                  i_read_cmd_valid    ,
     //
-    input  logic                  i_scl_i        ,
-    input  logic                  i_sda_i        ,
-    output logic                  o_scl_t        ,
+    output logic [DATA_WIDTH-1:0] o_m_axis_tdata      ,
+    output logic [KEEP_WIDTH-1:0] o_m_axis_tkeep      ,
+    output logic                  o_m_axis_tlast      ,
+    output logic                  o_m_axis_tvalid     ,
+    input  logic                  i_m_axis_tready     ,
+    //
+    input  logic                  i_scl_i             ,
+    input  logic                  i_sda_i             ,
+    output logic                  o_scl_t             ,
     output logic                  o_sda_t
 );
 
@@ -51,9 +55,9 @@ module axis_iic_bridge_cmd #(
     logic [                 2:0] bit_cnt              = '{default:0};
     logic                        has_ack              = 1'b0        ;
 
-    logic scl_i_registered     = 1'b1;
-    logic d_scl_i_registered   = 1'b1;
-    logic scl_i_event = 1'b0;
+    logic   scl_i_registered = 1'b1;
+    logic d_scl_i_registered = 1'b1;
+    logic   scl_i_event      = 1'b0;
 
     logic [                7:0] i2c_address       = '{default:0};
     logic [   (DATA_WIDTH-1):0] transmission_size = '{default:0};
@@ -93,6 +97,10 @@ module axis_iic_bridge_cmd #(
 
     typedef enum {
         IDLE_ST,
+
+        CHECK_WRITE_QUERY_ST,
+        CHECK_READ_QUERY_ST,
+
         START_ST,
         TX_ADDR_ST,
         WAIT_ACK_ST,
@@ -105,19 +113,114 @@ module axis_iic_bridge_cmd #(
         FLUSH_ST 
     } fsm;
 
-    fsm current_state = IDLE_ST;
 
-    
+
+    fsm current_state = CHECK_WRITE_QUERY_ST;
+
+
     localparam CMD_FIFO_WIDTH = 8 + SIZE_WIDTH;
 
-    logic [(CMD_FIFO_WIDTH-1):0] cmd_din          ;
-    logic                        cmd_wren         ;
-    logic                        cmd_full         ;
-    logic [(CMD_FIFO_WIDTH-1):0] cmd_dout         ;
-    logic [                 7:0] cmd_dout_iic_addr;
-    logic [    (SIZE_WIDTH-1):0] cmd_dout_size    ;
-    logic                        cmd_rden         ;
-    logic                        cmd_empty        ;
+    logic [(CMD_FIFO_WIDTH-1):0] write_cmd_din          ;
+    logic                        write_cmd_wren         ;
+    logic                        write_cmd_full         ;
+    logic [(CMD_FIFO_WIDTH-1):0] write_cmd_dout         ;
+    logic [                 7:0] write_cmd_dout_iic_addr;
+    logic [    (SIZE_WIDTH-1):0] write_cmd_dout_size    ;
+    logic                        write_cmd_rden         ;
+    logic                        write_cmd_empty        ;
+
+    logic [(CMD_FIFO_WIDTH-1):0] read_cmd_din          ;
+    logic                        read_cmd_wren         ;
+    logic                        read_cmd_full         ;
+    logic [(CMD_FIFO_WIDTH-1):0] read_cmd_dout         ;
+    logic [                 7:0] read_cmd_dout_iic_addr;
+    logic [    (SIZE_WIDTH-1):0] read_cmd_dout_size    ;
+    logic                        read_cmd_rden         ;
+    logic                        read_cmd_empty        ;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+    always_comb write_cmd_din = {i_write_cmd_size, i_write_cmd_iic_addr};
+    always_comb write_cmd_wren = i_write_cmd_valid;
+
+    always_ff @(posedge i_clk) begin : write_cmd_rden_processing
+        if (has_event) begin
+            case (current_state)
+                CHECK_WRITE_QUERY_ST :
+                    if (!write_cmd_empty) begin
+                        write_cmd_rden <= 1'b1;
+                    end else begin
+                        write_cmd_rden <= 1'b0;
+                    end
+
+                default :
+                    write_cmd_rden <= 1'b0;
+            endcase
+        end else begin
+            write_cmd_rden <= 1'b0;
+        end
+    end 
+
+    mp_xpm_fifo_cmd_sync #(
+        .DATA_WIDTH(CMD_FIFO_WIDTH),
+        .MEMTYPE   ("block"       ),
+        .DEPTH     (16            )
+    ) mp_xpm_fifo_cmd_sync_write_inst (
+        .I_CLK  (i_clk          ),
+        .I_RESET(i_reset        ),
+        .I_DIN  (write_cmd_din  ),
+        .I_WREN (write_cmd_wren ),
+        .O_FULL (write_cmd_full ),
+        .O_DOUT (write_cmd_dout ),
+        .I_RDEN (write_cmd_rden ),
+        .O_EMPTY(write_cmd_empty)
+    );
+
+    always_comb write_cmd_dout_iic_addr = write_cmd_dout[7:0];
+    always_comb write_cmd_dout_size = write_cmd_dout[CMD_FIFO_WIDTH:8];
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+    always_comb read_cmd_din = {i_read_cmd_size, i_read_cmd_iic_addr};
+    always_comb read_cmd_wren = i_read_cmd_valid;
+
+    always_ff @(posedge i_clk) begin : read_cmd_rden_processing
+        if (has_event) begin
+            case (current_state)
+                CHECK_READ_QUERY_ST :
+                    if (!read_cmd_empty) begin
+                        read_cmd_rden <= 1'b1;
+                    end else begin
+                        read_cmd_rden <= 1'b0;
+                    end
+
+                default :
+                    read_cmd_rden <= 1'b0;
+            endcase
+        end else begin
+            read_cmd_rden <= 1'b0;
+        end
+    end 
+
+    mp_xpm_fifo_cmd_sync #(
+        .DATA_WIDTH(CMD_FIFO_WIDTH),
+        .MEMTYPE   ("block"       ),
+        .DEPTH     (16            )
+    ) mp_xpm_fifo_cmd_sync_read_inst (
+        .I_CLK  (i_clk         ),
+        .I_RESET(i_reset       ),
+        .I_DIN  (read_cmd_din  ),
+        .I_WREN (read_cmd_wren ),
+        .O_FULL (read_cmd_full ),
+        .O_DOUT (read_cmd_dout ),
+        .I_RDEN (read_cmd_rden ),
+        .O_EMPTY(read_cmd_empty)
+    );
+
+    always_comb read_cmd_dout_iic_addr = read_cmd_dout[7:0];
+    always_comb read_cmd_dout_size = read_cmd_dout[CMD_FIFO_WIDTH:8];
+
+
 
 
     for (genvar index = 0; index < N_BYTES; index++) begin : GEN_S_AXIS_TDATA_SWAP
@@ -240,7 +343,11 @@ module axis_iic_bridge_cmd #(
 
     always_ff @(posedge i_clk) begin 
         case (current_state) 
-            IDLE_ST : 
+
+            CHECK_WRITE_QUERY_ST : 
+                o_scl_t <= 1'b1;
+
+            CHECK_READ_QUERY_ST : 
                 o_scl_t <= 1'b1;
 
             START_ST : 
@@ -351,9 +458,20 @@ module axis_iic_bridge_cmd #(
     always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state)
-                IDLE_ST : 
-                    if (!cmd_empty) begin 
-                        if (cmd_dout_size) begin 
+                CHECK_WRITE_QUERY_ST : 
+                    if (!write_cmd_empty) begin 
+                        if (write_cmd_dout_size) begin 
+                            o_sda_t <= 1'b0;
+                        end else begin 
+                            o_sda_t <= 1'b1;
+                        end 
+                    end else begin  
+                        o_sda_t <= 1'b1;
+                    end 
+
+                CHECK_READ_QUERY_ST : 
+                    if (!read_cmd_empty) begin 
+                        if (read_cmd_dout_size) begin 
                             o_sda_t <= 1'b0;
                         end else begin 
                             o_sda_t <= 1'b1;
@@ -425,23 +543,41 @@ module axis_iic_bridge_cmd #(
 
     always_ff @(posedge i_clk) begin 
         if (i_reset) begin 
-            current_state <= IDLE_ST;
+            current_state <= CHECK_WRITE_QUERY_ST;
         end else begin 
 
             if (has_event) begin 
                 case (current_state)
-                    IDLE_ST : 
+                    CHECK_WRITE_QUERY_ST : 
                         if (!has_bus_busy) begin  
-                            if (!cmd_empty) begin
-                                if (cmd_dout_size) begin // number of bytes has presented
+                            if (!write_cmd_empty) begin
+                                if (write_cmd_dout_size) begin // number of bytes has presented
                                     current_state <= START_ST;
                                 end else begin 
                                     current_state <= current_state;
                                 end 
+                            end else begin 
+                                current_state <= CHECK_READ_QUERY_ST;
                             end 
                         end else begin 
                             current_state <= AWAIT_OTHER_MASTER_ST;
                         end 
+
+                    CHECK_READ_QUERY_ST : 
+                        if (!has_bus_busy) begin  
+                            if (!read_cmd_empty) begin
+                                if (read_cmd_dout_size) begin // number of bytes has presented
+                                    current_state <= START_ST;
+                                end else begin 
+                                    current_state <= current_state;
+                                end 
+                            end else begin 
+                                current_state <= CHECK_WRITE_QUERY_ST;
+                            end 
+                        end else begin 
+                            current_state <= AWAIT_OTHER_MASTER_ST;
+                        end 
+
 
                     // State where input buffer was erase because transaction was aborted
                     FLUSH_ST: 
@@ -507,7 +643,12 @@ module axis_iic_bridge_cmd #(
                         end 
 
                     STOP_ST :
-                        current_state <= IDLE_ST;
+                        if (has_read_op) begin 
+                            current_state <= CHECK_WRITE_QUERY_ST;
+                        end else begin 
+                            current_state <= CHECK_READ_QUERY_ST;
+                        end 
+                        
 
                     AWAIT_OTHER_MASTER_ST : 
                         if (!has_bus_busy) begin 
@@ -525,11 +666,15 @@ module axis_iic_bridge_cmd #(
         end 
     end 
 
+
     always_ff @(posedge i_clk) begin
         if (has_event)
             case (current_state) 
-                IDLE_ST : 
-                    i2c_address <= cmd_dout_iic_addr;
+                CHECK_WRITE_QUERY_ST : 
+                    i2c_address <= write_cmd_dout_iic_addr;
+
+                CHECK_READ_QUERY_ST : 
+                    i2c_address <= read_cmd_dout_iic_addr;
 
                 START_ST : 
                     i2c_address <= {i2c_address[6:0], 1'b0};
@@ -542,14 +687,19 @@ module axis_iic_bridge_cmd #(
             endcase
     end
 
+
     always_ff @(posedge i_clk) begin 
         if (has_event) begin 
             case (current_state)
-                IDLE_ST : 
-                    has_read_op <= cmd_dout_iic_addr[0];
+                CHECK_WRITE_QUERY_ST : 
+                    has_read_op <= write_cmd_dout_iic_addr[0];
+
+                CHECK_READ_QUERY_ST : 
+                    has_read_op <= read_cmd_dout_iic_addr[0];
 
                 default: 
                     has_read_op <= has_read_op;
+
             endcase // current_state
         end else begin 
             has_read_op <= has_read_op;
@@ -606,44 +756,7 @@ module axis_iic_bridge_cmd #(
     end 
 
 
-    always_comb cmd_din = {i_cmd_size, i_cmd_iic_addr};
-    always_comb cmd_wren = i_cmd_valid;
-    
-    always_ff @(posedge i_clk) begin : cmd_rden_processing
-        if (has_event) begin  
-            case (current_state) 
-                IDLE_ST : 
-                    if (!cmd_empty) begin 
-                        cmd_rden <= 1'b1;
-                    end else begin 
-                        cmd_rden <= 1'b0;
-                    end 
 
-                default : 
-                    cmd_rden <= 1'b0;
-            endcase
-        end else begin 
-            cmd_rden <= 1'b0;
-        end 
-    end 
-
-    mp_xpm_fifo_cmd_sync #(
-        .DATA_WIDTH(CMD_FIFO_WIDTH),
-        .MEMTYPE   ("block"       ),
-        .DEPTH     (16            )
-    ) mp_xpm_fifo_cmd_sync_inst (
-        .I_CLK  (i_clk    ),
-        .I_RESET(i_reset  ),
-        .I_DIN  (cmd_din  ),
-        .I_WREN (cmd_wren ),
-        .O_FULL (cmd_full ),
-        .O_DOUT (cmd_dout ),
-        .I_RDEN (cmd_rden ),
-        .O_EMPTY(cmd_empty)
-    );
-
-    always_comb cmd_dout_iic_addr = cmd_dout[7:0];
-    always_comb cmd_dout_size = cmd_dout[CMD_FIFO_WIDTH:8];
 
 
     mp_xpm_fifo_in_sync #(
@@ -760,8 +873,12 @@ module axis_iic_bridge_cmd #(
         if (has_event) 
             case (current_state)
 
-                IDLE_ST : 
+                CHECK_WRITE_QUERY_ST : 
                     word_byte_counter <= '{default:0};
+
+                CHECK_READ_QUERY_ST : 
+                    word_byte_counter <= '{default:0};
+
 
                 WRITE_ST : 
                     if (!bit_cnt) begin 
@@ -801,9 +918,16 @@ module axis_iic_bridge_cmd #(
     always_ff @(posedge i_clk) begin
         if (has_event) begin 
             case (current_state) 
-                IDLE_ST: 
-                    if (!cmd_empty) begin 
-                        transmission_size <= cmd_dout_size;
+                CHECK_WRITE_QUERY_ST: 
+                    if (!write_cmd_empty) begin 
+                        transmission_size <= write_cmd_dout_size;
+                    end else begin 
+                        transmission_size <= transmission_size;
+                    end 
+
+                CHECK_READ_QUERY_ST: 
+                    if (!read_cmd_empty) begin 
+                        transmission_size <= read_cmd_dout_size;
                     end else begin 
                         transmission_size <= transmission_size;
                     end 
@@ -998,7 +1122,14 @@ module axis_iic_bridge_cmd #(
      */
     always_ff @(posedge i_clk) begin : has_bus_busy_proc
         case (current_state)
-            IDLE_ST : 
+            CHECK_WRITE_QUERY_ST : 
+                if (d_sda_i_registered & !sda_i_registered & scl_i_registered) begin 
+                    has_bus_busy <= 1'b1;
+                end else begin 
+                    has_bus_busy <= has_bus_busy;
+                end 
+
+            CHECK_READ_QUERY_ST : 
                 if (d_sda_i_registered & !sda_i_registered & scl_i_registered) begin 
                     has_bus_busy <= 1'b1;
                 end else begin 
