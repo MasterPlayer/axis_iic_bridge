@@ -128,9 +128,13 @@ module tb_axis_iic_bridge_x1 ();
     parameter  CMD_DEPTH          = 32            ;
     parameter  CMD_SIZE_WIDTH     = 8             ;
 
-    logic [               7:0] cmd_iic_addr = '{default:0};
-    logic [CMD_SIZE_WIDTH-1:0] cmd_size     = '{default:0};
-    logic                      cmd_valid    = 1'b0        ;
+    logic [               7:0] write_cmd_iic_addr = '{default:0};
+    logic [CMD_SIZE_WIDTH-1:0] write_cmd_size     = '{default:0};
+    logic                      write_cmd_valid    = 1'b0        ;
+
+    logic [               7:0] read_cmd_iic_addr = '{default:0};
+    logic [CMD_SIZE_WIDTH-1:0] read_cmd_size     = '{default:0};
+    logic                      read_cmd_valid    = 1'b0        ;
 
     logic [CMD_DATA_WIDTH-1:0] cmd_s_axis_tdata  = '{default:0};
     logic [               0:0] cmd_s_axis_tkeep  = '{default:0};
@@ -157,29 +161,32 @@ module tb_axis_iic_bridge_x1 ();
         .DEPTH         (CMD_DEPTH         ),
         .SIZE_WIDTH    (CMD_SIZE_WIDTH    )
     ) axis_iic_bridge_cmd_inst (
-        .i_clk          (clk              ),
-        .i_reset        (reset            ),
+        .i_clk               (clk               ),
+        .i_reset             (reset             ),
         //
-        .i_cmd_iic_addr (cmd_iic_addr     ),
-        .i_cmd_size     (cmd_size         ),
-        .i_cmd_valid    (cmd_valid        ),
+        .i_write_cmd_iic_addr(write_cmd_iic_addr),
+        .i_write_cmd_size    (write_cmd_size    ),
+        .i_write_cmd_valid   (write_cmd_valid   ),
         //
-        .i_s_axis_tdata (cmd_s_axis_tdata ),
-        .i_s_axis_tkeep (cmd_s_axis_tkeep ),
-        .i_s_axis_tlast (cmd_s_axis_tlast ),
-        .i_s_axis_tvalid(cmd_s_axis_tvalid),
-        .o_s_axis_tready(cmd_s_axis_tready),
+        .i_s_axis_tdata      (cmd_s_axis_tdata  ),
+        .i_s_axis_tkeep      (cmd_s_axis_tkeep  ),
+        .i_s_axis_tlast      (cmd_s_axis_tlast  ),
+        .i_s_axis_tvalid     (cmd_s_axis_tvalid ),
+        .o_s_axis_tready     (cmd_s_axis_tready ),
         //
-        .o_m_axis_tdata (cmd_m_axis_tdata ),
-        .o_m_axis_tkeep (cmd_m_axis_tkeep ),
-        .o_m_axis_tlast (cmd_m_axis_tlast ),
-        .o_m_axis_tvalid(cmd_m_axis_tvalid),
-        .i_m_axis_tready(cmd_m_axis_tready),
+        .i_read_cmd_iic_addr (read_cmd_iic_addr ),
+        .i_read_cmd_size     (read_cmd_size     ),
+        .i_read_cmd_valid    (read_cmd_valid    ),
+        .o_m_axis_tdata      (cmd_m_axis_tdata  ),
+        .o_m_axis_tkeep      (cmd_m_axis_tkeep  ),
+        .o_m_axis_tlast      (cmd_m_axis_tlast  ),
+        .o_m_axis_tvalid     (cmd_m_axis_tvalid ),
+        .i_m_axis_tready     (cmd_m_axis_tready ),
         //
-        .i_scl_i        (cmd_scl_i        ),
-        .i_sda_i        (cmd_sda_i        ),
-        .o_scl_t        (cmd_scl_t        ),
-        .o_sda_t        (cmd_sda_t        )
+        .i_scl_i             (cmd_scl_i         ),
+        .i_sda_i             (cmd_sda_i         ),
+        .o_scl_t             (cmd_scl_t         ),
+        .o_sda_t             (cmd_sda_t         )
     );
 
     always_comb cmd_m_axis_tready = 1'b1;
@@ -200,7 +207,7 @@ module tb_axis_iic_bridge_x1 ();
 
                 // 2000 : begin cmd_s_axis_tdata <= 8'h01; cmd_s_axis_tuser <= 8'hA6; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b0; end 
                 2001 : begin cmd_s_axis_tdata <= 8'h81; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b1; end 
-                2002 : begin cmd_s_axis_tdata <= 8'h82; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b1; end 
+                // 2002 : begin cmd_s_axis_tdata <= 8'h82; cmd_s_axis_tkeep <= 1'b1; cmd_s_axis_tvalid <= 1'b1; cmd_s_axis_tlast <= 1'b1; end 
 
                // 20000 : begin s_axis_tdata <= 8'h38; s_axis_tuser <= 8'hA7; s_axis_tkeep <= 1'b1; s_axis_tvalid <= 1'b1; s_axis_tlast <= 1'b1; end 
 
@@ -223,12 +230,21 @@ module tb_axis_iic_bridge_x1 ();
     end 
 
 
-    always_ff @(posedge clk) begin : cmd_processing 
+    always_ff @(posedge clk) begin : write_cmd_processing 
         case (index)
-               2000 : begin cmd_iic_addr <= 8'hA6; cmd_size <= 8'h01; cmd_valid <= 1'b1; end
-               2001 : begin cmd_iic_addr <= 8'hA6; cmd_size <= 8'h01; cmd_valid <= 1'b1; end
+               2000 : begin write_cmd_iic_addr <= 8'hA6; write_cmd_size <= 8'h01; write_cmd_valid <= 1'b1; end
+               // 2001 : begin cmd_iic_addr <= 8'hA6; cmd_size <= 8'h01; cmd_valid <= 1'b1; end
               // 20000 : begin cmd_iic_addr <= 8'hA7; cmd_size <= 8'h38; cmd_valid <= 1'b1; end
-            default : begin cmd_iic_addr <= cmd_iic_addr; cmd_size <= cmd_size; cmd_valid <= 1'b0; end
+            default : begin write_cmd_iic_addr <= write_cmd_iic_addr; write_cmd_size <= write_cmd_size; write_cmd_valid <= 1'b0; end
+        endcase
+    end 
+
+    always_ff @(posedge clk) begin : read_cmd_processing 
+        case (index)
+               2100 : begin read_cmd_iic_addr <= 8'hA7; read_cmd_size <= 8'h38; read_cmd_valid <= 1'b1; end
+               // 2001 : begin cmd_iic_addr <= 8'hA6; cmd_size <= 8'h01; cmd_valid <= 1'b1; end
+              // 20000 : begin cmd_iic_addr <= 8'hA7; cmd_size <= 8'h38; cmd_valid <= 1'b1; end
+            default : begin read_cmd_iic_addr <= read_cmd_iic_addr; read_cmd_size <= read_cmd_size; read_cmd_valid <= 1'b0; end
         endcase
     end 
 
