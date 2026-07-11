@@ -81,6 +81,9 @@ module tb_slave_device_model (
     logic   [7:0] iic_address                ;
     logic   [2:0] bit_cnt      = '{default:0};
     logic   [7:0] ptr                        ;
+
+    logic [7:0] received_byte;
+
     integer       word_counter = 0           ;
 
 
@@ -377,6 +380,25 @@ module tb_slave_device_model (
             default : 
                 ptr <= ptr;
         endcase // duration_fsm_state
+    end 
+
+
+    always_ff @(posedge i_clk) begin : received_byte_processing 
+        case (current_state)
+            RX_DATA_ST :    
+                if (scl_assert) begin
+                    if (word_counter == 1) begin 
+                        received_byte <= {received_byte[6:0], iic_sda_i};
+                    end else begin 
+                        received_byte <= received_byte; 
+                    end  
+                end else begin 
+                    received_byte <= received_byte;
+                end 
+
+            default : 
+                received_byte <= received_byte;
+        endcase // current_state
     end 
 
 
