@@ -177,7 +177,7 @@ module axis_iic_bridge_cmd #(
     );
 
     always_comb write_cmd_dout_iic_addr = write_cmd_dout[7:0];
-    always_comb write_cmd_dout_size = write_cmd_dout[CMD_FIFO_WIDTH:8];
+    always_comb write_cmd_dout_size = write_cmd_dout[(CMD_FIFO_WIDTH-1):8];
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -218,7 +218,7 @@ module axis_iic_bridge_cmd #(
     );
 
     always_comb read_cmd_dout_iic_addr = read_cmd_dout[7:0];
-    always_comb read_cmd_dout_size = read_cmd_dout[CMD_FIFO_WIDTH:8];
+    always_comb read_cmd_dout_size = read_cmd_dout[(CMD_FIFO_WIDTH-1):8];
 
 
 
